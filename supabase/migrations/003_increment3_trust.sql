@@ -3,7 +3,7 @@
 
 drop view if exists public.dish_feed;
 
-create view public.dish_feed as
+create view public.dish_feed with (security_invoker = on) as
 select
   dr.id,
   dr.dish_name,

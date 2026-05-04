@@ -4,23 +4,31 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+const MAX_REASON = 1000;
+
 export function ReportModal({ dishId, onClose }: { dishId: string; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
   async function submit() {
-    if (!reason.trim() || !supabase) return;
-    setSubmitting(true);
+    const trimmed = reason.trim();
+    if (!trimmed || trimmed.length > MAX_REASON || !supabase) return;
+
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { window.location.href = "/auth"; return; }
+
+    setSubmitting(true);
     await supabase.from("content_reports").insert({
       dish_recommendation_id: dishId,
-      reporter_id: user?.id ?? null,
-      reason: reason.trim(),
+      reporter_id: user.id,
+      reason: trimmed,
     });
     setDone(true);
     setSubmitting(false);
   }
+
+  const overLimit = reason.length > MAX_REASON;
 
   return (
     <div
@@ -38,10 +46,7 @@ export function ReportModal({ dishId, onClose }: { dishId: string; onClose: () =
         {done ? (
           <div className="mt-4 space-y-4">
             <p className="text-sm text-ink/70">Thanks for the report. We&apos;ll review it shortly.</p>
-            <button
-              onClick={onClose}
-              className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white"
-            >
+            <button onClick={onClose} className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white">
               Close
             </button>
           </div>
@@ -49,22 +54,22 @@ export function ReportModal({ dishId, onClose }: { dishId: string; onClose: () =
           <>
             <p className="mt-2 text-sm text-ink/60">Tell us what&apos;s wrong with this recommendation.</p>
             <textarea
-              className="mt-4 w-full rounded-md border border-black/15 bg-rice px-3 py-2 text-sm outline-none focus:border-basil"
+              className={`mt-4 w-full rounded-md border bg-rice px-3 py-2 text-sm outline-none focus:border-basil ${overLimit ? "border-tomato" : "border-black/15"}`}
               rows={4}
               placeholder="Describe the issue..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                onClick={onClose}
-                className="rounded-md border border-black/15 px-4 py-2 text-sm font-medium hover:bg-black/5"
-              >
+            <p className={`mt-1 text-right text-xs ${overLimit ? "text-tomato" : "text-ink/40"}`}>
+              {reason.length} / {MAX_REASON}
+            </p>
+            <div className="mt-3 flex justify-end gap-3">
+              <button onClick={onClose} className="rounded-md border border-black/15 px-4 py-2 text-sm font-medium hover:bg-black/5">
                 Cancel
               </button>
               <button
                 onClick={submit}
-                disabled={!reason.trim() || submitting}
+                disabled={!reason.trim() || overLimit || submitting}
                 className="rounded-md bg-tomato px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {submitting ? "Sending..." : "Submit report"}
