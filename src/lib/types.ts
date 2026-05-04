@@ -277,6 +277,9 @@ export type Database = {
           curator_name: string | null;
           curator_type: string | null;
           tags: string[] | null;
+          like_count: number | null;
+          save_count: number | null;
+          curator_dish_count: number | null;
         };
         Relationships: [];
       };

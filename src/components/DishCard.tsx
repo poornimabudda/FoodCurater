@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { BadgeCheck, MapPin, Star } from "lucide-react";
 import type { DishFeedItem } from "@/lib/types";
+import { LikeSaveButtons } from "./LikeSaveButtons";
 
 export function DishCard({ dish }: { dish: DishFeedItem }) {
   return (
@@ -55,7 +56,24 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
             </span>
           ))}
         </div>
-        <p className="text-sm text-ink/60">Recommended by {dish.curator_name ?? "a curator"}</p>
+        <div className="flex items-center justify-between gap-2">
+          {dish.curator_id ? (
+            <Link href={`/curators/${dish.curator_id}`} className="min-w-0 text-sm text-ink/60 hover:underline">
+              <span className="truncate">{dish.curator_name ?? "a curator"}</span>
+              {dish.curator_dish_count ? (
+                <span className="ml-1 text-ink/40">· {dish.curator_dish_count} {dish.curator_dish_count === 1 ? "dish" : "dishes"}</span>
+              ) : null}
+            </Link>
+          ) : (
+            <p className="text-sm text-ink/60">{dish.curator_name ?? "a curator"}</p>
+          )}
+          <LikeSaveButtons
+            dishId={dish.id}
+            initialLikes={dish.like_count ?? 0}
+            initialSaves={dish.save_count ?? 0}
+            compact
+          />
+        </div>
       </div>
     </article>
   );

@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ChevronLeft, User } from "lucide-react";
+import { DishCard } from "@/components/DishCard";
+import { supabase } from "@/lib/supabase";
+import type { DishFeedItem, ProfileRow } from "@/lib/types";
+
+export default function CuratorPage() {
+  const { id } = useParams<{ id: string }>();
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [dishes, setDishes] = useState<DishFeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      if (!supabase) { setLoading(false); return; }
+
+      const [profileResult, dishesResult] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", id).single(),
+        supabase.from("dish_feed").select("*").eq("curator_id", id).order("created_at", { ascending: false }),
+      ]);
+
+      if (profileResult.error || !profileResult.data) { setNotFound(true); setLoading(false); return; }
+      setProfile(profileResult.data);
+      setDishes(dishesResult.data ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [id]);
+
+  if (loading) return <main className="mx-auto max-w-6xl px-4 py-10"><p className="text-ink/60">Loading curator...</p></main>;
+  if (notFound || !profile) return (
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <p className="text-ink/60">Curator not found.</p>
+      <Link href="/" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-basil hover:underline">
+        <ChevronLeft size={16} />Back to feed
+      </Link>
+    </main>
+  );
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <Link href="/" className="inline-flex items-center gap-1 text-sm font-medium text-ink/60 hover:text-ink">
+        <ChevronLeft size={16} />Back to feed
+      </Link>
+
+      <div className="mt-6 rounded-md border border-black/10 bg-white p-6 shadow-soft">
+        <div className="flex items-start gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-basil/10">
+            <User size={28} className="text-basil" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-ink">{profile.display_name}</h1>
+            <p className="mt-1 text-sm text-ink/60">
+              {profile.curator_type?.replace(/_/g, " ") ?? "Curator"}
+              {profile.city ? ` · ${profile.city}` : ""}
+            </p>
+            {profile.bio && <p className="mt-3 text-sm leading-6 text-ink/70">{profile.bio}</p>}
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-2xl font-bold text-ink">{dishes.length}</p>
+            <p className="text-xs text-ink/50">{dishes.length === 1 ? "dish" : "dishes"} curated</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-xl font-bold text-ink">Recommendations</h2>
+        {dishes.length === 0 ? (
+          <div className="mt-4 rounded-md border border-dashed border-black/20 bg-white p-8 text-center">
+            <p className="text-ink/60">No recommendations yet.</p>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {dishes.map((dish) => <DishCard dish={dish} key={dish.id} />)}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
