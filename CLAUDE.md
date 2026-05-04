@@ -91,8 +91,8 @@ All tables have RLS enabled. Anon users can read everything public.
 | 0 — Setup | Done | Next.js, Tailwind, Supabase wired |
 | 1 — Curator Posting MVP | Done | Auth, profile, post recommendation, home feed |
 | 2 — Dish Discovery | Done | Dish detail, restaurant detail, advanced filters (cuisine/price/spice/veg) |
-| 3 — Curator Trust Layer | **Next** | See below |
-| 4 — Saved Dishes & Collections | Pending | DB tables exist, no UI yet |
+| 3 — Curator Trust Layer | Done | Likes, saves, reports, /curators/[id] |
+| 4 — Saved Dishes & Collections | Done | /saved page, nav link |
 | 5 — AI Assistant | Future | Deferred until content exists |
 
 ---
