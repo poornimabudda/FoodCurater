@@ -39,6 +39,7 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
           <p className="mt-1 flex items-center gap-1 text-sm text-ink/60">
             <MapPin size={14} />
             {[dish.restaurant_city, dish.cuisine].filter(Boolean).join(" • ") || "Location pending"}
+            {dish.course_type ? ` · ${dish.course_type.replace(/_/g, " ")}` : ""}
           </p>
         </div>
         {dish.description ? <p className="text-sm leading-6 text-ink/75">{dish.description}</p> : null}
@@ -52,7 +53,7 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
           {dish.is_vegetarian ? <span className="rounded-md bg-basil/10 px-2 py-1 text-xs font-semibold text-basil">Vegetarian</span> : null}
           {dish.tags?.map((tag) => (
             <span className="rounded-md bg-black/5 px-2 py-1 text-xs font-medium text-ink/70" key={tag}>
-              {tag.replace("_", " ")}
+              {tag.replace(/_/g, " ")}
             </span>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bookmark, ChefHat, PlusCircle, UserRound } from "lucide-react";
+import { Bookmark, ChefHat, HelpCircle, PlusCircle, UserRound } from "lucide-react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,6 +21,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Dish Curator
             </Link>
             <nav className="flex items-center gap-2">
+              <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/how-it-works">
+                <span className="flex items-center gap-2">
+                  <HelpCircle size={16} />
+                  <span className="hidden sm:inline">How it works</span>
+                </span>
+              </Link>
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/saved">
                 <span className="flex items-center gap-2">
                   <Bookmark size={16} />

@@ -58,6 +58,7 @@ Use clear business terms:
 - dish_recommendation
 - taste_tag
 - saved_dish
+- dish_image
 
 ## Definition of Done for Increment 1
 - A user can sign up or sign in.
@@ -68,6 +69,18 @@ Use clear business terms:
 - A user can see a feed of dish recommendations.
 - Data is persisted in Supabase.
 - README includes setup steps.
+
+## Implemented Enhancements
+
+The following enhancements have been fully implemented:
+
+1. **Allergens & Strict Diets:** Tags expanded with Gluten-Free, Dairy-Free, Nut-Free, Halal, Kosher, Keto-Friendly. Tags are now organized into three groups: Taste Profile, Dietary & Allergen, Context.
+2. **Course Type & Portion Context:** `course_type` column on `dish_recommendations` (appetizer, main_course, side, dessert, beverage). Context tags added: great_for_sharing, huge_portion, light_bite.
+3. **Curator Specializations:** Expertise badges auto-computed client-side on `/curators/[id]` from tag/cuisine frequency across the curator's recommendations (threshold: 2+).
+4. **The "Perfect Pairing":** `pairs_well_with` text field on `dish_recommendations`, shown as a callout on dish detail.
+5. **Cuisine Granularity:** Cuisine input placeholder updated to prompt regional specificity (e.g. "Sichuan, not just Chinese").
+6. **Multi-Image Upload:** Curators can upload up to 4 photos per recommendation. Images are compressed client-side (max 1500px, JPEG 0.82) and stored in `dish_images` table. Primary image mirrored to `dish_recommendations.image_url` for feed queries. Gallery shown on dish detail with hero + thumbnail strip.
+7. **Onboarding & Help:** First-visit WelcomeBanner (localStorage gated), `/how-it-works` page with two-persona tabs (browser / curator) and FAQ, nav "How it works" link.
 
 ## Future AI Direction
 Add AI only after content validation. Future features may include:

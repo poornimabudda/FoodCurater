@@ -5,7 +5,7 @@
 A dish-level food recommendation app. Not a restaurant review app. The core question it answers:
 > "What specific dish should I order here, and why?"
 
-Users called **curators** post recommendations for dishes they personally tasted. Other users browse to decide what to order. Trust signals (personally tasted, curator type, ratings) differentiate this from generic reviews.
+Users called **curators** post recommendations for dishes they personally tasted. Other users browse to decide what to order. Trust signals (personally tasted, curator type, ratings, expertise badges) differentiate this from generic reviews.
 
 ---
 
@@ -41,24 +41,35 @@ VERCEL_TOKEN=...
 ```
 src/
   app/
-    page.tsx                      # Home feed — search + filters (cuisine, price, spice, veg)
-    layout.tsx                    # Nav: home, profile, recommend
+    page.tsx                      # Home feed — search + filters + WelcomeBanner
+    layout.tsx                    # Nav: how-it-works, saved, profile, recommend
+    how-it-works/page.tsx         # Two-tab guide for browsers and curators + FAQ
     auth/page.tsx                 # Magic link sign-in
     profile/page.tsx              # Create/edit curator profile
-    recommendations/new/page.tsx  # Post a dish recommendation
-    dishes/[id]/page.tsx          # Dish detail page
-    restaurants/[id]/page.tsx     # Restaurant detail page (all dishes at that location)
+    recommendations/new/page.tsx  # Post a dish recommendation (with multi-image upload)
+    dishes/[id]/page.tsx          # Dish detail — gallery, stats, pairs, tags, curator
+    restaurants/[id]/page.tsx     # All dishes at a restaurant
+    curators/[id]/page.tsx        # Curator profile — bio, expertise badges, dish grid
+    saved/page.tsx                # User's saved dishes
   components/
-    DishCard.tsx                  # Card shown in feed — links to dish + restaurant detail
+    DishCard.tsx                  # Feed card — image, rating, tags, course type
+    ImageUploader.tsx             # Multi-image upload (up to 4, compress, make-primary)
+    WelcomeBanner.tsx             # First-visit onboarding banner (localStorage gated)
+    LikeSaveButtons.tsx           # Like + save toggle buttons
+    ReportModal.tsx               # Content report modal
     SetupNotice.tsx               # Shown when Supabase env vars are missing
   lib/
     supabase.ts                   # Supabase client init
     types.ts                      # TypeScript types for all DB tables + dish_feed view
-    constants.ts                  # curatorTypes[], starterTags[]
+    constants.ts                  # curatorTypes[], courseTypes[], tagGroups[], starterTags[]
 supabase/
   migrations/
     001_initial_mvp.sql           # All tables, RLS, storage policies, seed taste_tags
-    002_increment2_views.sql      # Recreates dish_feed view with restaurant_id + curator_id
+    002_increment2_views.sql      # Recreates dish_feed with restaurant_id + curator_id
+    003_increment3_trust.sql      # dish_feed with like_count, save_count, curator_dish_count
+    004_security_fixes.sql        # Public SELECT on likes/saves; security_invoker on view
+    005_enhancements.sql          # course_type, pairs_well_with, 9 new taste_tags, view update
+    006_dish_images.sql           # dish_images table (multi-image per recommendation)
 ```
 
 ---
@@ -71,16 +82,28 @@ All tables have RLS enabled. Anon users can read everything public.
 |---|---|
 | `profiles` | Curator profiles — display_name, city, curator_type, bio |
 | `restaurants` | Restaurant records — name, address, city, cuisine |
-| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url |
-| `taste_tags` | 13 preset tags: spicy, mild, vegetarian, vegan, sweet, oily, crispy, creamy, must_try, avoid, good_value, chef_special, kid_friendly |
+| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url (primary), course_type, pairs_well_with |
+| `dish_images` | Up to 4 images per recommendation — url, position (0 = primary) |
+| `taste_tags` | 22 tags across Taste Profile / Dietary & Allergen / Context groups |
 | `dish_recommendation_tags` | Many-to-many: dish ↔ tags |
 | `dish_likes` | user_id + dish_recommendation_id (PK) |
 | `saved_dishes` | user_id + dish_recommendation_id (PK) |
 | `content_reports` | reporter_id, dish_recommendation_id, reason, status |
 
-**View: `dish_feed`** — denormalized feed used by home feed and restaurant detail page. Columns: `id, dish_name, description, rating, price_estimate, is_personally_tasted, is_vegetarian, spice_level, image_url, created_at, restaurant_id, curator_id, restaurant_name, restaurant_city, cuisine, curator_name, curator_type, tags[]`
+**View: `dish_feed`** — denormalized feed. Columns include `course_type`, `pairs_well_with`, `like_count`, `save_count`, `curator_dish_count`, `tags[]`.
 
-**Storage:** `food_images` bucket (public). Path pattern: `{recommendation_id}/{timestamp}.{ext}`
+**Storage:** `food_images` bucket (public). Path: `{recommendation_id}/{position}_{timestamp}.jpg`  
+Images are compressed client-side to max 1500px / JPEG 0.82 before upload. Min 600px required.
+
+---
+
+## Tag Groups (constants.ts)
+
+| Group | Tags |
+|---|---|
+| Taste Profile | spicy, mild, sweet, oily, crispy, creamy |
+| Dietary & Allergen | vegetarian, vegan, gluten_free, dairy_free, nut_free, halal, kosher, keto_friendly |
+| Context | must_try, avoid, good_value, chef_special, kid_friendly, great_for_sharing, huge_portion, light_bite |
 
 ---
 
@@ -90,52 +113,12 @@ All tables have RLS enabled. Anon users can read everything public.
 |---|---|---|
 | 0 — Setup | Done | Next.js, Tailwind, Supabase wired |
 | 1 — Curator Posting MVP | Done | Auth, profile, post recommendation, home feed |
-| 2 — Dish Discovery | Done | Dish detail, restaurant detail, advanced filters (cuisine/price/spice/veg) |
+| 2 — Dish Discovery | Done | Dish detail, restaurant detail, advanced filters |
 | 3 — Curator Trust Layer | Done | Likes, saves, reports, /curators/[id] |
-| 4 — Saved Dishes & Collections | Done | /saved page, nav link |
+| 4 — Saved Dishes | Done | /saved page, nav link |
+| Enhancements | Done | Allergen tags, course type, pairs well with, curator badges, cuisine hint |
+| Multi-image & Onboarding | Done | ImageUploader (4 photos, compress), gallery, WelcomeBanner, /how-it-works |
 | 5 — AI Assistant | Future | Deferred until content exists |
-
----
-
-## Increment 3 — Curator Trust Layer (Next to Build)
-
-**Goal:** Help users understand why a curator is trustworthy.
-
-### Features to build:
-
-**Backend (Supabase):**
-- Add `like_count` and `save_count` to `dish_feed` view (count from `dish_likes` and `saved_dishes`)
-- No new tables needed — `dish_likes`, `saved_dishes`, `content_reports` already exist
-
-**Frontend:**
-- `/curators/[id]` page — public curator profile showing: display_name, city, curator_type, bio, dish count, list of their recommendations
-- Like button on DishCard and dish detail page (toggle like, show count)
-- Save button on DishCard and dish detail page (toggle save, show count)
-- Report button on dish detail page (modal with reason field)
-- Show dish count on DishCard curator attribution line
-
-### Migration needed:
-```sql
--- 003_increment3_trust.sql
--- Update dish_feed view to include like_count and save_count
-drop view if exists public.dish_feed;
-create view public.dish_feed as
-select
-  dr.id, dr.dish_name, dr.description, dr.rating, dr.price_estimate,
-  dr.is_personally_tasted, dr.is_vegetarian, dr.spice_level, dr.image_url, dr.created_at,
-  dr.restaurant_id, dr.curator_id,
-  r.name as restaurant_name, r.city as restaurant_city, r.cuisine,
-  p.display_name as curator_name, p.curator_type,
-  coalesce(array_agg(tt.name) filter (where tt.name is not null), '{}') as tags,
-  (select count(*) from public.dish_likes dl where dl.dish_recommendation_id = dr.id) as like_count,
-  (select count(*) from public.saved_dishes sd where sd.dish_recommendation_id = dr.id) as save_count
-from public.dish_recommendations dr
-join public.restaurants r on r.id = dr.restaurant_id
-join public.profiles p on p.id = dr.curator_id
-left join public.dish_recommendation_tags drt on drt.dish_recommendation_id = dr.id
-left join public.taste_tags tt on tt.id = drt.taste_tag_id
-group by dr.id, r.id, p.id;
-```
 
 ---
 

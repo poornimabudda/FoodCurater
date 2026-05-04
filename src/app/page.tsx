@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { DishCard } from "@/components/DishCard";
 import { SetupNotice } from "@/components/SetupNotice";
+import { WelcomeBanner } from "@/components/WelcomeBanner";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { DishFeedItem } from "@/lib/types";
 
@@ -60,6 +61,7 @@ export default function HomePage() {
 
   return (
     <main>
+      <WelcomeBanner />
       <section className="border-b border-black/10">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 md:grid-cols-[1.1fr_0.9fr] md:items-end">
           <div>

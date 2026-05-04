@@ -8,6 +8,37 @@ import { DishCard } from "@/components/DishCard";
 import { supabase } from "@/lib/supabase";
 import type { DishFeedItem, ProfileRow } from "@/lib/types";
 
+function computeSpecializations(dishes: DishFeedItem[]) {
+  const tagCounts: Record<string, number> = {};
+  const cuisineCounts: Record<string, number> = {};
+
+  for (const dish of dishes) {
+    for (const tag of dish.tags ?? []) {
+      tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+    }
+    if (dish.cuisine) {
+      cuisineCounts[dish.cuisine] = (cuisineCounts[dish.cuisine] ?? 0) + 1;
+    }
+  }
+
+  const topTags = Object.entries(tagCounts)
+    .filter(([, count]) => count >= 2)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2)
+    .map(([tag]) => tag);
+
+  const topCuisine = Object.entries(cuisineCounts)
+    .filter(([, count]) => count >= 2)
+    .sort(([, a], [, b]) => b - a)
+    .at(0)?.[0] ?? null;
+
+  return { topTags, topCuisine };
+}
+
+function capitalize(s: string) {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function CuratorPage() {
   const { id } = useParams<{ id: string }>();
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -42,6 +73,9 @@ export default function CuratorPage() {
     </main>
   );
 
+  const { topTags, topCuisine } = computeSpecializations(dishes);
+  const hasSpecializations = topTags.length > 0 || topCuisine !== null;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <Link href="/" className="inline-flex items-center gap-1 text-sm font-medium text-ink/60 hover:text-ink">
@@ -60,6 +94,21 @@ export default function CuratorPage() {
               {profile.city ? ` · ${profile.city}` : ""}
             </p>
             {profile.bio && <p className="mt-3 text-sm leading-6 text-ink/70">{profile.bio}</p>}
+
+            {hasSpecializations && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {topTags.map((tag) => (
+                  <span key={tag} className="inline-flex items-center gap-1 rounded-md bg-saffron/15 px-3 py-1.5 text-xs font-semibold text-ink">
+                    ★ {capitalize(tag)} Expert
+                  </span>
+                ))}
+                {topCuisine && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-saffron/15 px-3 py-1.5 text-xs font-semibold text-ink">
+                    ★ {topCuisine} Specialist
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="shrink-0 text-right">
             <p className="text-2xl font-bold text-ink">{dishes.length}</p>

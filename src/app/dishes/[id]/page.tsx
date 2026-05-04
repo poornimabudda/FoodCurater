@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BadgeCheck, ChevronLeft, DollarSign, Flag, Flame, MapPin, Star } from "lucide-react";
+import { BadgeCheck, ChevronLeft, DollarSign, Flag, Flame, Layers, Link2, MapPin, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { LikeSaveButtons } from "@/components/LikeSaveButtons";
 import { ReportModal } from "@/components/ReportModal";
+
+type DishImage = { url: string; position: number };
 
 type DishDetail = {
   id: string;
@@ -19,12 +21,15 @@ type DishDetail = {
   is_vegetarian: boolean | null;
   spice_level: number | null;
   image_url: string | null;
+  course_type: string | null;
+  pairs_well_with: string | null;
   created_at: string;
   restaurant_id: string;
   curator_id: string;
   restaurant: { id: string; name: string; city: string | null; state: string | null; cuisine: string | null; address: string | null };
   curator: { id: string; display_name: string; curator_type: string | null; city: string | null };
   tags: string[];
+  images: DishImage[];
   like_count: number;
   save_count: number;
 };
@@ -32,6 +37,7 @@ type DishDetail = {
 export default function DishDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [dish, setDish] = useState<DishDetail | null>(null);
+  const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -40,12 +46,13 @@ export default function DishDetailPage() {
     async function load() {
       if (!supabase) { setLoading(false); return; }
 
-      const [dishRes, countsRes] = await Promise.all([
+      const [dishRes, countsRes, imagesRes] = await Promise.all([
         supabase
           .from("dish_recommendations")
           .select(`
             id, dish_name, description, rating, price_estimate,
             is_personally_tasted, is_vegetarian, spice_level, image_url, created_at,
+            course_type, pairs_well_with,
             restaurant_id, curator_id,
             restaurant:restaurants(id, name, city, state, cuisine, address),
             curator:profiles(id, display_name, curator_type, city),
@@ -53,27 +60,30 @@ export default function DishDetailPage() {
           `)
           .eq("id", id)
           .single(),
-        supabase
-          .from("dish_feed")
-          .select("like_count, save_count")
-          .eq("id", id)
-          .single(),
+        supabase.from("dish_feed").select("like_count, save_count").eq("id", id).single(),
+        supabase.from("dish_images").select("url, position").eq("dish_recommendation_id", id).order("position"),
       ]);
 
       if (dishRes.error || !dishRes.data) { setNotFound(true); setLoading(false); return; }
 
       const tags = (dishRes.data.dish_recommendation_tags as any[])
-        .map((row) => row.taste_tags?.name)
-        .filter(Boolean) as string[];
+        .map((row) => row.taste_tags?.name).filter(Boolean) as string[];
 
-      setDish({
+      const images: DishImage[] = (imagesRes.data ?? []).length > 0
+        ? (imagesRes.data as DishImage[])
+        : dishRes.data.image_url ? [{ url: dishRes.data.image_url, position: 0 }] : [];
+
+      const built: DishDetail = {
         ...dishRes.data,
         restaurant: dishRes.data.restaurant as any,
         curator: dishRes.data.curator as any,
         tags,
+        images,
         like_count: countsRes.data?.like_count ?? 0,
         save_count: countsRes.data?.save_count ?? 0,
-      });
+      };
+      setDish(built);
+      setActiveImageUrl(images[0]?.url ?? null);
       setLoading(false);
     }
     load();
@@ -94,12 +104,30 @@ export default function DishDetailPage() {
       </Link>
 
       <div className="mt-6 overflow-hidden rounded-md border border-black/10 bg-white shadow-soft">
-        {dish.image_url ? (
+
+        {/* Hero image */}
+        {activeImageUrl ? (
           <div className="relative aspect-[16/7] w-full bg-black/5">
-            <Image src={dish.image_url} alt={dish.dish_name} fill className="object-cover" sizes="768px" />
+            <Image src={activeImageUrl} alt={dish.dish_name} fill className="object-cover" sizes="768px" priority />
           </div>
         ) : (
           <div className="flex aspect-[16/7] items-center justify-center bg-black/5 text-sm text-ink/40">No photo yet</div>
+        )}
+
+        {/* Thumbnail strip (only when >1 image) */}
+        {dish.images.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto bg-black/[0.02] px-4 py-3">
+            {dish.images.map((img) => (
+              <button
+                key={img.position}
+                type="button"
+                onClick={() => setActiveImageUrl(img.url)}
+                className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-colors ${activeImageUrl === img.url ? "border-basil" : "border-transparent hover:border-black/20"}`}
+              >
+                <Image src={img.url} alt={`Photo ${img.position + 1}`} fill className="object-cover" sizes="64px" />
+              </button>
+            ))}
+          </div>
         )}
 
         <div className="p-6">
@@ -122,9 +150,7 @@ export default function DishDetailPage() {
             {dish.restaurant.cuisine ? ` • ${dish.restaurant.cuisine}` : ""}
           </p>
 
-          {dish.description && (
-            <p className="mt-5 text-base leading-7 text-ink/80">{dish.description}</p>
-          )}
+          {dish.description && <p className="mt-5 text-base leading-7 text-ink/80">{dish.description}</p>}
 
           <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {dish.price_estimate !== null && (
@@ -137,6 +163,12 @@ export default function DishDetailPage() {
               <div className="rounded-md border border-black/10 p-3">
                 <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-ink/50"><Flame size={13} />Spice level</p>
                 <p className="mt-1 text-lg font-bold text-ink">{dish.spice_level} / 5</p>
+              </div>
+            )}
+            {dish.course_type && (
+              <div className="rounded-md border border-black/10 p-3">
+                <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-ink/50"><Layers size={13} />Course</p>
+                <p className="mt-1 text-lg font-bold text-ink capitalize">{dish.course_type.replace(/_/g, " ")}</p>
               </div>
             )}
           </div>
@@ -152,10 +184,20 @@ export default function DishDetailPage() {
             )}
             {dish.tags.map((tag) => (
               <span key={tag} className="rounded-md bg-black/5 px-3 py-1.5 text-sm font-medium text-ink/70">
-                {tag.replace("_", " ")}
+                {tag.replace(/_/g, " ")}
               </span>
             ))}
           </div>
+
+          {dish.pairs_well_with && (
+            <div className="mt-5 flex items-start gap-2 rounded-md border border-black/10 bg-saffron/5 px-4 py-3">
+              <Link2 size={15} className="mt-0.5 shrink-0 text-saffron" />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">Pairs well with</p>
+                <p className="mt-0.5 text-sm text-ink/80">{dish.pairs_well_with}</p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 flex items-center gap-3">
             <LikeSaveButtons dishId={dish.id} initialLikes={dish.like_count} initialSaves={dish.save_count} />
@@ -164,9 +206,7 @@ export default function DishDetailPage() {
           <div className="mt-8 flex items-center justify-between border-t border-black/10 pt-6">
             <Link href={`/curators/${dish.curator_id}`} className="flex items-center gap-3 hover:opacity-80">
               <div className="grid h-10 w-10 place-items-center rounded-full bg-basil/10">
-                <span className="text-sm font-bold text-basil">
-                  {dish.curator.display_name.charAt(0).toUpperCase()}
-                </span>
+                <span className="text-sm font-bold text-basil">{dish.curator.display_name.charAt(0).toUpperCase()}</span>
               </div>
               <div>
                 <p className="text-sm font-semibold text-ink">{dish.curator.display_name}</p>
@@ -180,8 +220,7 @@ export default function DishDetailPage() {
               onClick={() => setShowReport(true)}
               className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink/40 hover:bg-black/5 hover:text-tomato"
             >
-              <Flag size={13} />
-              Report
+              <Flag size={13} />Report
             </button>
           </div>
         </div>

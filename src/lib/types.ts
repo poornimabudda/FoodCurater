@@ -72,6 +72,8 @@ export type Database = {
           is_vegetarian: boolean | null;
           spice_level: number | null;
           image_url: string | null;
+          course_type: string | null;
+          pairs_well_with: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -87,6 +89,8 @@ export type Database = {
           is_vegetarian?: boolean | null;
           spice_level?: number | null;
           image_url?: string | null;
+          course_type?: string | null;
+          pairs_well_with?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["dish_recommendations"]["Insert"]>;
         Relationships: [
@@ -213,6 +217,35 @@ export type Database = {
           }
         ];
       };
+      dish_images: {
+        Row: {
+          id: string;
+          dish_recommendation_id: string;
+          url: string;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          dish_recommendation_id: string;
+          url: string;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          url?: string;
+          position?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dish_images_dish_recommendation_id_fkey";
+            columns: ["dish_recommendation_id"];
+            isOneToOne: false;
+            referencedRelation: "dish_recommendations";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       content_reports: {
         Row: {
           id: string;
@@ -280,6 +313,8 @@ export type Database = {
           like_count: number | null;
           save_count: number | null;
           curator_dish_count: number | null;
+          course_type: string | null;
+          pairs_well_with: string | null;
         };
         Relationships: [];
       };
@@ -294,3 +329,4 @@ export type DishFeedItem = Database["public"]["Views"]["dish_feed"]["Row"];
 export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 export type RestaurantRow = Database["public"]["Tables"]["restaurants"]["Row"];
 export type TasteTagRow = Database["public"]["Tables"]["taste_tags"]["Row"];
+export type DishImageRow = Database["public"]["Tables"]["dish_images"]["Row"];
