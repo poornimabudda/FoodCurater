@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Map, Search, SlidersHorizontal, X } from "lucide-react";
 import { DishCard } from "@/components/DishCard";
 import { SetupNotice } from "@/components/SetupNotice";
 import { WelcomeBanner } from "@/components/WelcomeBanner";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { DishFeedItem } from "@/lib/types";
 
+const PAGE_SIZE = 20;
+type FeedTab = "latest" | "trending" | "following";
+
 export default function HomePage() {
+  const [tab, setTab] = useState<FeedTab>("latest");
   const [dishes, setDishes] = useState<DishFeedItem[]>([]);
   const [search, setSearch] = useState("");
   const [vegetarianOnly, setVegetarianOnly] = useState(false);
@@ -17,16 +22,97 @@ export default function HomePage() {
   const [maxSpice, setMaxSpice] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userPostCount, setUserPostCount] = useState<number | null>(null);
+  const [followingIds, setFollowingIds] = useState<string[]>([]);
 
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Load auth state + following list once
   useEffect(() => {
-    async function loadFeed() {
-      if (!supabase) { setLoading(false); return; }
-      const { data, error } = await supabase.from("dish_feed").select("*").order("created_at", { ascending: false });
-      if (!error) setDishes(data ?? []);
-      setLoading(false);
-    }
-    loadFeed();
+    if (!supabase) return;
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user || !supabase) return;
+      setUserId(user.id);
+
+      const [postRes, followRes] = await Promise.all([
+        supabase.from("dish_recommendations").select("id", { count: "exact", head: true }).eq("curator_id", user.id),
+        supabase.from("follows").select("following_id").eq("follower_id", user.id),
+      ]);
+      setUserPostCount(postRes.count ?? 0);
+      setFollowingIds((followRes.data ?? []).map((r) => r.following_id));
+    });
   }, []);
+
+  const fetchPage = useCallback(async (reset: boolean) => {
+    if (!supabase) { setLoading(false); return; }
+
+    if (reset) {
+      setLoading(true);
+      setCursor(null);
+      setDishes([]);
+      setHasMore(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    const currentCursor = reset ? null : cursor;
+
+    let query = supabase.from("dish_feed").select("*");
+
+    if (tab === "trending") {
+      // Trending: order by (like_count + save_count) desc, then created_at desc
+      query = query.order("like_count", { ascending: false }).order("save_count", { ascending: false }).order("created_at", { ascending: false });
+    } else if (tab === "following") {
+      if (followingIds.length === 0) {
+        setDishes([]);
+        setHasMore(false);
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+      query = query.in("curator_id", followingIds).order("created_at", { ascending: false });
+    } else {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    if (currentCursor) {
+      query = query.lt("created_at", currentCursor);
+    }
+
+    query = query.limit(PAGE_SIZE);
+
+    const { data, error } = await query;
+    if (!error && data) {
+      const newDishes = reset ? data : [...dishes, ...data];
+      setDishes(newDishes);
+      setHasMore(data.length === PAGE_SIZE);
+      if (data.length > 0) setCursor(data[data.length - 1].created_at);
+    }
+    setLoading(false);
+    setLoadingMore(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, followingIds, cursor]);
+
+  // Re-fetch when tab changes
+  useEffect(() => {
+    fetchPage(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, followingIds]);
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || loadingMore || loading) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) fetchPage(false); },
+      { threshold: 0.1 }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, fetchPage]);
 
   const cuisines = useMemo(() => {
     const set = new Set(dishes.map((d) => d.cuisine).filter(Boolean) as string[]);
@@ -59,9 +145,12 @@ export default function HomePage() {
     setMaxSpice("");
   }
 
+  const showNewCuratorNudge = userId !== null && userPostCount === 0;
+
   return (
     <main>
       <WelcomeBanner />
+
       <section className="border-b border-black/10">
         <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 md:grid-cols-[1.1fr_0.9fr] md:items-end">
           <div>
@@ -70,6 +159,15 @@ export default function HomePage() {
             <p className="mt-4 max-w-2xl text-lg leading-8 text-ink/70">
               Browse specific dishes recommended by people who actually tasted them, with notes that help you choose fast.
             </p>
+            <div className="mt-4 flex items-center gap-3">
+              <Link
+                href="/map"
+                className="inline-flex items-center gap-2 rounded-md border border-black/15 bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-black/5"
+              >
+                <Map size={15} />
+                Explore on map
+              </Link>
+            </div>
           </div>
           <div className="rounded-md border border-black/10 bg-white p-3 shadow-soft">
             <label className="flex items-center gap-2 rounded-md border border-black/10 bg-rice px-3 py-2">
@@ -101,7 +199,6 @@ export default function HomePage() {
                   Vegetarian only
                   <input type="checkbox" checked={vegetarianOnly} onChange={(e) => setVegetarianOnly(e.target.checked)} />
                 </label>
-
                 {cuisines.length > 0 && (
                   <label className="grid gap-1 text-sm font-medium">
                     Cuisine
@@ -115,7 +212,6 @@ export default function HomePage() {
                     </select>
                   </label>
                 )}
-
                 <label className="grid gap-1 text-sm font-medium">
                   Max price ($)
                   <input
@@ -125,7 +221,6 @@ export default function HomePage() {
                     onChange={(e) => setMaxPrice(e.target.value)}
                   />
                 </label>
-
                 <label className="grid gap-1 text-sm font-medium">
                   Max spice level (0–5)
                   <input
@@ -135,7 +230,6 @@ export default function HomePage() {
                     onChange={(e) => setMaxSpice(e.target.value)}
                   />
                 </label>
-
                 {activeFilterCount > 0 && (
                   <button onClick={clearFilters} className="flex items-center gap-1 text-sm font-medium text-tomato hover:underline">
                     <X size={14} />Clear filters
@@ -149,8 +243,52 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 py-8">
         {!isSupabaseConfigured ? <SetupNotice /> : null}
+
+        {/* New curator nudge */}
+        {showNewCuratorNudge && (
+          <div className="mb-6 flex items-center justify-between rounded-md border border-basil/30 bg-basil/5 px-5 py-4">
+            <div>
+              <p className="font-semibold text-ink">You&apos;re all set! Post your first dish recommendation.</p>
+              <p className="mt-0.5 text-sm text-ink/60">Share a dish you&apos;ve personally tasted and help others decide what to order.</p>
+            </div>
+            <Link
+              href="/recommendations/new"
+              className="ml-4 shrink-0 rounded-md bg-basil px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Post a dish
+            </Link>
+          </div>
+        )}
+
+        {/* Feed tabs */}
+        <div className="mb-6 flex gap-1 rounded-md border border-black/10 bg-white p-1 shadow-soft w-fit">
+          {(["latest", "trending", "following"] as FeedTab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-md px-4 py-1.5 text-sm font-semibold capitalize transition-colors ${
+                tab === t ? "bg-ink text-white" : "text-ink/60 hover:text-ink"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
         {loading ? <p className="mt-6 text-ink/60">Loading recommendations...</p> : null}
-        {!loading && filteredDishes.length === 0 ? (
+
+        {/* Following tab empty state */}
+        {!loading && tab === "following" && followingIds.length === 0 && (
+          <div className="mt-6 rounded-md border border-dashed border-black/20 bg-white p-8 text-center">
+            <p className="text-lg font-semibold text-ink">Follow curators to see their dishes here.</p>
+            <p className="mt-2 text-ink/60">Visit a curator&apos;s profile and tap Follow to build your feed.</p>
+            <button onClick={() => setTab("latest")} className="mt-4 inline-flex rounded-md bg-basil px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+              Browse all dishes
+            </button>
+          </div>
+        )}
+
+        {!loading && filteredDishes.length === 0 && !(tab === "following" && followingIds.length === 0) ? (
           <div className="mt-6 rounded-md border border-dashed border-black/20 bg-white p-8 text-center">
             <p className="text-lg font-semibold text-ink">
               {activeFilterCount > 0 || search ? "No dishes match your filters." : "No dish recommendations yet."}
@@ -167,16 +305,26 @@ export default function HomePage() {
             )}
           </div>
         ) : null}
+
         {!loading && filteredDishes.length > 0 && (
-          <p className="mt-2 text-sm text-ink/50">
+          <p className="mb-4 text-sm text-ink/50">
             {filteredDishes.length} {filteredDishes.length === 1 ? "dish" : "dishes"}
             {activeFilterCount > 0 || search ? " matching your filters" : ""}
           </p>
         )}
-        <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredDishes.map((dish) => (
             <DishCard dish={dish} key={dish.id} />
           ))}
+        </div>
+
+        {/* Infinite scroll sentinel */}
+        <div ref={sentinelRef} className="mt-8 flex justify-center">
+          {loadingMore && <p className="text-sm text-ink/50">Loading more...</p>}
+          {!hasMore && dishes.length > 0 && (
+            <p className="text-sm text-ink/40">You&apos;ve seen all dishes in this feed.</p>
+          )}
         </div>
       </section>
     </main>

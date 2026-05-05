@@ -118,7 +118,59 @@ Images are compressed client-side to max 1500px / JPEG 0.82 before upload. Min 6
 | 4 — Saved Dishes | Done | /saved page, nav link |
 | Enhancements | Done | Allergen tags, course type, pairs well with, curator badges, cuisine hint |
 | Multi-image & Onboarding | Done | ImageUploader (4 photos, compress), gallery, WelcomeBanner, /how-it-works |
+| Phase 2 — Commercial Enhancements | Done | See Phase 2 section below |
 | 5 — AI Assistant | Future | Deferred until content exists |
+
+---
+
+## Phase 2: Commercial Enhancements
+
+All 10 enhancements implemented to improve discoverability, retention, and mobile UX in preparation for commercial growth.
+
+### New Routes
+
+| Route | Purpose |
+|---|---|
+| `/dashboard` | Curator analytics — total likes, saves, views, top dish, posting streak |
+| `/map` | Map-based dish discovery (Leaflet + OpenStreetMap) |
+
+### New Components
+
+| Component | Purpose |
+|---|---|
+| `src/components/FollowButton.tsx` | Follow/unfollow a curator; shows follower count |
+| `src/components/MapView.tsx` | Leaflet map with restaurant markers (dynamic import, SSR disabled) |
+| `src/components/PostWizard.tsx` | 3-step post wizard replacing the single-page form |
+
+### New/Updated Pages
+
+| Page | Changes |
+|---|---|
+| `src/app/page.tsx` | Feed tabs (Latest / Trending / Following), infinite scroll, onboarding CTA for new users |
+| `src/app/dishes/[id]/page.tsx` | SSR + OG meta tags, visual polish, star rating row, similar dishes section |
+| `src/app/restaurants/[id]/page.tsx` | SSR + OG meta tags, claim restaurant button |
+| `src/app/curators/[id]/page.tsx` | SSR + OG meta tags, FollowButton, follower count |
+| `src/app/recommendations/new/page.tsx` | Replaced with 3-step wizard (Where → Dish details → Photos & tags) |
+| `src/app/dashboard/page.tsx` | New — curator stats dashboard |
+| `src/app/map/page.tsx` | New — map discovery page |
+
+### Database Changes (migration 007)
+
+Run `supabase/migrations/007_phase2.sql` in Supabase SQL editor:
+- `follows` table — curator follow graph (follower_id → following_id)
+- `dish_view_counts` table — anonymous page view tracking per dish
+- `restaurant_claim_requests` table — restaurant claiming workflow
+- `is_verified` column on `restaurants`
+- Updated `dish_feed` view with `follower_count` on profiles (separate query)
+
+### Map Stack
+
+| Layer | Technology |
+|---|---|
+| Map tiles | OpenStreetMap via Leaflet (free, no key) |
+| React wrapper | `react-leaflet` + `leaflet` npm packages |
+| Geocoding | Nominatim API (free, no key, 1 req/s limit) |
+| SSR workaround | `dynamic(() => import("@/components/MapView"), { ssr: false })` |
 
 ---
 

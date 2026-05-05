@@ -35,6 +35,7 @@ export type Database = {
           country: string | null;
           cuisine: string | null;
           created_by: string | null;
+          is_verified: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -47,6 +48,7 @@ export type Database = {
           country?: string | null;
           cuisine?: string | null;
           created_by?: string | null;
+          is_verified?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["restaurants"]["Insert"]>;
         Relationships: [
@@ -288,6 +290,60 @@ export type Database = {
           }
         ];
       };
+      follows: {
+        Row: {
+          follower_id: string;
+          following_id: string;
+          created_at: string;
+        };
+        Insert: {
+          follower_id: string;
+          following_id: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      dish_view_counts: {
+        Row: {
+          dish_recommendation_id: string;
+          view_count: number;
+          last_viewed_at: string;
+        };
+        Insert: {
+          dish_recommendation_id: string;
+          view_count?: number;
+          last_viewed_at?: string;
+        };
+        Update: {
+          view_count?: number;
+          last_viewed_at?: string;
+        };
+        Relationships: [];
+      };
+      restaurant_claim_requests: {
+        Row: {
+          id: string;
+          restaurant_id: string;
+          requester_id: string;
+          message: string | null;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          restaurant_id: string;
+          requester_id: string;
+          message?: string | null;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          status?: string;
+          message?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       dish_feed: {
@@ -330,3 +386,6 @@ export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 export type RestaurantRow = Database["public"]["Tables"]["restaurants"]["Row"];
 export type TasteTagRow = Database["public"]["Tables"]["taste_tags"]["Row"];
 export type DishImageRow = Database["public"]["Tables"]["dish_images"]["Row"];
+export type FollowRow = Database["public"]["Tables"]["follows"]["Row"];
+export type DishViewCountRow = Database["public"]["Tables"]["dish_view_counts"]["Row"];
+export type RestaurantClaimRequestRow = Database["public"]["Tables"]["restaurant_claim_requests"]["Row"];

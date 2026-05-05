@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Send } from "lucide-react";
 import { ImageUploader, type ImagePreview } from "@/components/ImageUploader";
 import { SetupNotice } from "@/components/SetupNotice";
 import { courseTypes, tagGroups } from "@/lib/constants";
@@ -10,15 +10,27 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { RestaurantRow, TasteTagRow } from "@/lib/types";
 
 type Restaurant = Pick<RestaurantRow, "id" | "name" | "city" | "cuisine">;
+type Step = 1 | 2 | 3;
+
+const STEP_LABELS: Record<Step, string> = {
+  1: "Where did you eat?",
+  2: "Tell us about the dish",
+  3: "Photos & tags",
+};
 
 export default function NewRecommendationPage() {
+  const [step, setStep] = useState<Step>(1);
   const [userId, setUserId] = useState<string | null>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+
+  // Step 1 — restaurant
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantCity, setNewRestaurantCity] = useState("");
   const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
+
+  // Step 2 — dish
   const [dishName, setDishName] = useState("");
   const [description, setDescription] = useState("");
   const [rating, setRating] = useState(5);
@@ -28,8 +40,11 @@ export default function NewRecommendationPage() {
   const [isPersonallyTasted, setIsPersonallyTasted] = useState(true);
   const [courseType, setCourseType] = useState("");
   const [pairsWellWith, setPairsWellWith] = useState("");
+
+  // Step 3 — photos + tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [uploadImages, setUploadImages] = useState<ImagePreview[]>([]);
+
   const [message, setMessage] = useState("");
   const [newDishId, setNewDishId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,28 +53,15 @@ export default function NewRecommendationPage() {
   useEffect(() => {
     async function loadData() {
       if (!supabase) { setLoading(false); return; }
-
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       setUserId(user?.id ?? null);
-
       if (user) {
-        // Check if the user has a profile row — required before posting
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("display_name")
-          .eq("id", user.id)
-          .maybeSingle();
+        const { data: profileData } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
         setHasProfile(!!profileData?.display_name);
-
-        const { data } = await supabase
-          .from("restaurants")
-          .select("id, name, city, cuisine")
-          .order("name")
-          .returns<Restaurant[]>();
+        const { data } = await supabase.from("restaurants").select("id, name, city, cuisine").order("name").returns<Restaurant[]>();
         setRestaurants(data ?? []);
       }
-
       setLoading(false);
     }
     loadData();
@@ -69,14 +71,26 @@ export default function NewRecommendationPage() {
     setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
   }
 
+  function step1Valid() {
+    if (selectedRestaurantId) return true;
+    return newRestaurantName.trim().length > 0;
+  }
+
+  function step2Valid() {
+    return dishName.trim().length > 0;
+  }
+
+  function step3Valid() {
+    return uploadImages.length > 0 && !uploadImages.some((img) => img.error);
+  }
+
   async function resolveRestaurant() {
     if (!supabase || !userId) return null;
     if (selectedRestaurantId) return selectedRestaurantId;
     const { data, error } = await supabase
       .from("restaurants")
       .insert({ name: newRestaurantName, city: newRestaurantCity || null, cuisine: newRestaurantCuisine || null, created_by: userId })
-      .select("id")
-      .single<{ id: string }>();
+      .select("id").single<{ id: string }>();
     if (error) throw error;
     return data.id;
   }
@@ -95,16 +109,11 @@ export default function NewRecommendationPage() {
     return results;
   }
 
-  async function saveRecommendation(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit() {
     if (!supabase || !userId) return;
-    if (uploadImages.length === 0) { setMessage("Add at least one photo before posting."); return; }
-    if (uploadImages.some((img) => img.error)) { setMessage("Fix the photo errors before posting."); return; }
-
     setSaving(true);
     setMessage("");
     setNewDishId(null);
-
     try {
       const restaurantId = await resolveRestaurant();
       if (!restaurantId) throw new Error("Choose or add a restaurant.");
@@ -124,203 +133,218 @@ export default function NewRecommendationPage() {
           course_type: courseType || null,
           pairs_well_with: pairsWellWith || null,
         })
-        .select("id")
-        .single<{ id: string }>();
+        .select("id").single<{ id: string }>();
       if (recError) throw recError;
 
       const imageResults = await uploadAllImages(recommendation.id);
       if (imageResults.length > 0) {
-        const { error: urlError } = await supabase
-          .from("dish_recommendations")
-          .update({ image_url: imageResults[0].url })
-          .eq("id", recommendation.id);
-        if (urlError) throw new Error(`Saving primary image failed: ${urlError.message}`);
-
-        const { error: imagesError } = await supabase
-          .from("dish_images")
-          .insert(imageResults.map((r) => ({ dish_recommendation_id: recommendation.id, url: r.url, position: r.position })));
-        if (imagesError) throw new Error(`Saving image gallery failed: ${imagesError.message}`);
+        await supabase.from("dish_recommendations").update({ image_url: imageResults[0].url }).eq("id", recommendation.id);
+        await supabase.from("dish_images").insert(
+          imageResults.map((r) => ({ dish_recommendation_id: recommendation.id, url: r.url, position: r.position }))
+        );
       }
 
       if (selectedTags.length > 0) {
-        const { data: tags, error: tagError } = await supabase
-          .from("taste_tags")
-          .select("id, name")
-          .in("name", selectedTags)
-          .returns<Pick<TasteTagRow, "id" | "name">[]>();
-        if (tagError) throw tagError;
-        const { error } = await supabase.from("dish_recommendation_tags").insert(
+        const { data: tags } = await supabase.from("taste_tags").select("id, name").in("name", selectedTags).returns<Pick<TasteTagRow, "id" | "name">[]>();
+        await supabase.from("dish_recommendation_tags").insert(
           (tags ?? []).map((tag) => ({ dish_recommendation_id: recommendation.id, taste_tag_id: tag.id }))
         );
-        if (error) throw error;
       }
 
       setNewDishId(recommendation.id);
-      setMessage("Recommendation posted successfully.");
-      setDishName(""); setDescription(""); setCourseType(""); setPairsWellWith("");
-      setSelectedTags([]); setUploadImages([]);
     } catch (error) {
-      console.error("[new recommendation] save error:", error);
       setMessage(error instanceof Error ? error.message : "Could not save recommendation.");
     } finally {
       setSaving(false);
     }
   }
 
+  // ── Guards ────────────────────────────────────────────────────────────────
+  if (!isSupabaseConfigured) return <main className="mx-auto max-w-2xl px-4 py-10"><SetupNotice /></main>;
+  if (loading) return <main className="mx-auto max-w-2xl px-4 py-10"><p className="text-ink/60">Loading...</p></main>;
+
+  if (!userId) return (
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      <div className="rounded-md border border-black/10 bg-white p-6 shadow-soft">
+        <p className="font-semibold text-ink">Sign in before posting a recommendation.</p>
+        <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/auth">Go to sign in</Link>
+      </div>
+    </main>
+  );
+
+  if (hasProfile === false) return (
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-6">
+        <p className="font-semibold text-ink">Set up your profile before posting.</p>
+        <p className="mt-1 text-sm text-ink/70">Your display name and curator type help people trust your recommendations.</p>
+        <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/profile">Create profile</Link>
+      </div>
+    </main>
+  );
+
+  if (newDishId) return (
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      <div className="rounded-md border border-basil/20 bg-basil/5 p-8 text-center">
+        <p className="text-xl font-semibold text-basil">Recommendation posted!</p>
+        <p className="mt-2 text-sm text-ink/60">Thanks for helping others decide what to order.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <Link href={`/dishes/${newDishId}`} className="inline-flex rounded-md bg-basil px-5 py-2 text-sm font-semibold text-white hover:opacity-90">
+            View your dish →
+          </Link>
+          <button
+            onClick={() => { setStep(1); setNewDishId(null); setDishName(""); setDescription(""); setCourseType(""); setPairsWellWith(""); setSelectedTags([]); setUploadImages([]); setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantCity(""); setNewRestaurantCuisine(""); }}
+            className="rounded-md border border-black/15 px-5 py-2 text-sm font-semibold text-ink hover:bg-black/5"
+          >
+            Post another
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+
+  // ── Wizard ────────────────────────────────────────────────────────────────
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-3xl font-bold text-ink">Recommend a dish</h1>
-      <p className="mt-2 text-ink/70">Focus on what someone should order and why it is worth trying.</p>
-
-      {!isSupabaseConfigured ? <div className="mt-6"><SetupNotice /></div> : null}
-      {loading ? <p className="mt-6 text-ink/60">Loading...</p> : null}
-
-      {/* Not signed in */}
-      {!loading && isSupabaseConfigured && !userId ? (
-        <div className="mt-6 rounded-md border border-black/10 bg-white p-6 shadow-soft">
-          <p className="font-semibold text-ink">Sign in before posting a recommendation.</p>
-          <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/auth">Go to sign in</Link>
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      {/* Progress bar */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          {([1, 2, 3] as Step[]).map((s) => (
+            <div key={s} className="flex items-center gap-2">
+              <div className={`grid h-7 w-7 place-items-center rounded-full text-xs font-bold ${step >= s ? "bg-basil text-white" : "bg-black/10 text-ink/40"}`}>
+                {s}
+              </div>
+              <span className={`text-sm font-medium ${step === s ? "text-ink" : "text-ink/40"}`}>{STEP_LABELS[s]}</span>
+            </div>
+          ))}
         </div>
-      ) : null}
-
-      {/* Signed in but no profile yet */}
-      {userId && hasProfile === false ? (
-        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-6">
-          <p className="font-semibold text-ink">Set up your profile before posting.</p>
-          <p className="mt-1 text-sm text-ink/70">Your display name and curator type help people trust your recommendations.</p>
-          <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/profile">Create profile</Link>
+        <div className="h-1.5 rounded-full bg-black/10">
+          <div className="h-1.5 rounded-full bg-basil transition-all" style={{ width: `${((step - 1) / 2) * 100}%` }} />
         </div>
-      ) : null}
+      </div>
 
-      {/* Post-success state */}
-      {newDishId ? (
-        <div className="mt-6 rounded-md border border-basil/20 bg-basil/5 p-6">
-          <p className="font-semibold text-basil">Recommendation posted!</p>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <Link href={`/dishes/${newDishId}`} className="inline-flex rounded-md bg-basil px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-              View your dish →
-            </Link>
-            <button onClick={() => setNewDishId(null)} className="rounded-md border border-black/15 px-4 py-2 text-sm font-semibold text-ink hover:bg-black/5">
-              Post another
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <div className="rounded-md border border-black/10 bg-white p-6 shadow-soft">
+        <h2 className="mb-5 text-xl font-bold text-ink">{STEP_LABELS[step]}</h2>
 
-      {/* The form — only show if logged in, has profile, and hasn't just posted */}
-      {userId && hasProfile && !newDishId ? (
-        <form className="mt-6 grid gap-6 rounded-md border border-black/10 bg-white p-6 shadow-soft" onSubmit={saveRecommendation}>
-
-          {/* Restaurant */}
-          <section className="grid gap-4">
-            <h2 className="text-lg font-semibold">Restaurant</h2>
-            <select className="rounded-md border border-black/15 px-3 py-2" value={selectedRestaurantId} onChange={(e) => setSelectedRestaurantId(e.target.value)}>
-              <option value="">Add a new restaurant</option>
+        {/* ── Step 1: Restaurant ─────────────────────────────────────────── */}
+        {step === 1 && (
+          <div className="grid gap-4">
+            <select
+              className="rounded-md border border-black/15 px-3 py-2"
+              value={selectedRestaurantId}
+              onChange={(e) => setSelectedRestaurantId(e.target.value)}
+            >
+              <option value="">+ Add a new restaurant</option>
               {restaurants.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}{r.city ? ` - ${r.city}` : ""}</option>
+                <option key={r.id} value={r.id}>{r.name}{r.city ? ` – ${r.city}` : ""}</option>
               ))}
             </select>
             {!selectedRestaurantId && (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Restaurant name" value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} required />
-                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="City" value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} />
-                <input
-                  className="rounded-md border border-black/15 px-3 py-2"
-                  placeholder="Cuisine (e.g. Sichuan, not just Chinese)"
-                  value={newRestaurantCuisine}
-                  onChange={(e) => setNewRestaurantCuisine(e.target.value)}
-                  title="Be specific — e.g. Neapolitan, Sichuan, Kerala, Oaxacan"
-                />
+              <div className="grid gap-3 rounded-md border border-black/10 bg-rice/50 p-4">
+                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Restaurant name *" value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="City" value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} />
+                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Cuisine (e.g. Sichuan)" value={newRestaurantCuisine} onChange={(e) => setNewRestaurantCuisine(e.target.value)} />
+                </div>
               </div>
             )}
-          </section>
+          </div>
+        )}
 
-          {/* Dish details */}
-          <section className="grid gap-4">
-            <h2 className="text-lg font-semibold">Dish</h2>
-            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name" value={dishName} onChange={(e) => setDishName(e.target.value)} required />
-            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Short taste notes: texture, spice, portion, why you recommend it" value={description} onChange={(e) => setDescription(e.target.value)} />
-
+        {/* ── Step 2: Dish details ──────────────────────────────────────── */}
+        {step === 2 && (
+          <div className="grid gap-4">
+            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" value={dishName} onChange={(e) => setDishName(e.target.value)} />
+            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" value={description} onChange={(e) => setDescription(e.target.value)} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-semibold">
+              <label className="grid gap-1.5 text-sm font-semibold">
                 Course type
                 <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={courseType} onChange={(e) => setCourseType(e.target.value)}>
                   <option value="">Not specified</option>
                   {courseTypes.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-semibold">
+              <label className="grid gap-1.5 text-sm font-semibold">
                 Pairs well with
                 <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
               </label>
             </div>
-
             <div className="grid gap-4 sm:grid-cols-3">
-              <label className="grid gap-2 text-sm font-semibold">
-                Rating
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Rating (1–5)
                 <input type="number" min="1" max="5" className="rounded-md border border-black/15 px-3 py-2" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
               </label>
-              <label className="grid gap-2 text-sm font-semibold">
-                Price estimate ($)
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Price ($)
                 <input type="number" min="0" step="0.01" className="rounded-md border border-black/15 px-3 py-2" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
               </label>
-              <label className="grid gap-2 text-sm font-semibold">
-                Spice level (0–5)
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Spice (0–5)
                 <input type="number" min="0" max="5" className="rounded-md border border-black/15 px-3 py-2" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
               </label>
             </div>
-
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isVegetarian} onChange={(e) => setIsVegetarian(e.target.checked)} />
-                Vegetarian
+                <input type="checkbox" checked={isVegetarian} onChange={(e) => setIsVegetarian(e.target.checked)} />Vegetarian
               </label>
               <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isPersonallyTasted} onChange={(e) => setIsPersonallyTasted(e.target.checked)} />
-                Personally tasted
+                <input type="checkbox" checked={isPersonallyTasted} onChange={(e) => setIsPersonallyTasted(e.target.checked)} />Personally tasted
               </label>
             </div>
-          </section>
+          </div>
+        )}
 
-          {/* Tags */}
-          <section className="grid gap-4">
-            <h2 className="text-lg font-semibold">Tags</h2>
-            {tagGroups.map((group) => (
-              <div key={group.label}>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">{group.label}</p>
-                <div className="flex flex-wrap gap-2">
-                  {group.tags.map((tag) => (
-                    <button
-                      type="button"
-                      key={tag}
-                      className={`rounded-md px-3 py-1.5 text-sm font-semibold ${selectedTags.includes(tag) ? "bg-basil text-white" : "bg-black/5 text-ink"}`}
-                      onClick={() => toggleTag(tag)}
-                    >
-                      {tag.replace(/_/g, " ")}
-                    </button>
-                  ))}
+        {/* ── Step 3: Photos + tags ─────────────────────────────────────── */}
+        {step === 3 && (
+          <div className="grid gap-6">
+            <ImageUploader images={uploadImages} onChange={setUploadImages} />
+            <div>
+              <p className="mb-3 text-sm font-semibold text-ink">Tags <span className="font-normal text-ink/50">(optional)</span></p>
+              {tagGroups.map((group) => (
+                <div key={group.label} className="mb-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">{group.label}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.tags.map((tag) => (
+                      <button type="button" key={tag} onClick={() => toggleTag(tag)}
+                        className={`rounded-md px-3 py-1.5 text-sm font-semibold ${selectedTags.includes(tag) ? "bg-basil text-white" : "bg-black/5 text-ink"}`}>
+                        {tag.replace(/_/g, " ")}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </section>
+              ))}
+            </div>
+          </div>
+        )}
 
-          {/* Images */}
-          <ImageUploader images={uploadImages} onChange={setUploadImages} />
+        {/* Navigation */}
+        <div className="mt-6 flex items-center justify-between gap-3">
+          {step > 1 ? (
+            <button onClick={() => setStep((s) => (s - 1) as Step)} className="inline-flex items-center gap-1 text-sm font-medium text-ink/60 hover:text-ink">
+              <ChevronLeft size={16} />Back
+            </button>
+          ) : <div />}
 
-          <button
-            className="inline-flex w-fit items-center gap-2 rounded-md bg-tomato px-4 py-2 font-semibold text-white disabled:opacity-60"
-            disabled={saving}
-          >
-            <Send size={18} />
-            {saving ? "Posting..." : "Post recommendation"}
-          </button>
-          {message && (
-            <p className={`text-sm ${message.startsWith("Add") || message.startsWith("Fix") ? "text-tomato" : "text-ink/70"}`}>
-              {message}
-            </p>
+          {step < 3 ? (
+            <button
+              onClick={() => setStep((s) => (s + 1) as Step)}
+              disabled={step === 1 ? !step1Valid() : !step2Valid()}
+              className="inline-flex items-center gap-2 rounded-md bg-ink px-5 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              Next<ChevronRight size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={submit}
+              disabled={saving || !step3Valid()}
+              className="inline-flex items-center gap-2 rounded-md bg-tomato px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              <Send size={16} />{saving ? "Posting..." : "Post recommendation"}
+            </button>
           )}
-        </form>
-      ) : null}
+        </div>
+
+        {message && <p className="mt-3 text-sm text-tomato">{message}</p>}
+      </div>
     </main>
   );
 }

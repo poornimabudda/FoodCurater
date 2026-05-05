@@ -70,9 +70,41 @@ Use clear business terms:
 - Data is persisted in Supabase.
 - README includes setup steps.
 
-## Implemented Enhancements
+## Phase 2: Commercial Enhancements
 
-The following enhancements have been fully implemented:
+The following Phase 2 enhancements have been fully implemented to improve discoverability, retention, and mobile UX:
+
+1. **SEO — SSR + OG Meta Tags:** Dish detail, restaurant, and curator pages converted to Server Components with `generateMetadata()` for dynamic Open Graph tags. Pages are indexable by Google and show rich previews when shared on social media.
+
+2. **Feed Pagination + Infinite Scroll:** Home feed uses cursor-based pagination (20 dishes/page). Intersection observer triggers next page load. Eliminates loading all dishes at once.
+
+3. **Follow System:** `follows` table in DB. `FollowButton` component on curator profiles. "Following" tab on home feed shows only dishes from followed curators.
+
+4. **Multi-step Post Wizard:** Recommendations form split into 3 steps — "Where did you eat?", "Tell us about the dish", "Photos & tags". Dramatically reduces perceived friction on mobile.
+
+5. **Map Discovery:** `/map` page with Leaflet + OpenStreetMap showing restaurant markers. Clicking a marker previews dishes at that restaurant. No API key required.
+
+6. **Dish Detail Visual Polish:** Star rating row (filled/empty stars), improved stat cards, "Similar dishes" section at the bottom (same restaurant or shared tags).
+
+7. **Curator Dashboard:** `/dashboard` page showing total likes, saves, views, top dish by engagement, and posting streak. Only visible to authenticated curator.
+
+8. **Restaurant Claiming:** "Claim this restaurant" button on restaurant pages. Submits to `restaurant_claim_requests` table. `is_verified` badge shown when approved.
+
+9. **Trending Sort:** Feed "Trending" tab ranks dishes by (likes + saves) in the last 7 days. Computed from existing `dish_likes` and `saved_dishes` tables.
+
+10. **Onboarding CTAs:** Post-first-login nudge ("Post your first dish!") shown on home feed when user has 0 posts. Dish detail pages show "Have you tried this? Post your take." CTA for logged-in users with 0 posts.
+
+### New DB Tables (migration 007)
+- `follows` (follower_id, following_id, created_at)
+- `dish_view_counts` (dish_recommendation_id, view_count, last_viewed_at)
+- `restaurant_claim_requests` (id, restaurant_id, requester_id, message, status, created_at)
+- `is_verified` boolean column on `restaurants`
+
+---
+
+## Implemented Enhancements (Phase 1)
+
+The following Phase 1 enhancements have been fully implemented:
 
 1. **Allergens & Strict Diets:** Tags expanded with Gluten-Free, Dairy-Free, Nut-Free, Halal, Kosher, Keto-Friendly. Tags are now organized into three groups: Taste Profile, Dietary & Allergen, Context.
 2. **Course Type & Portion Context:** `course_type` column on `dish_recommendations` (appetizer, main_course, side, dessert, beverage). Context tags added: great_for_sharing, huge_portion, light_bite.

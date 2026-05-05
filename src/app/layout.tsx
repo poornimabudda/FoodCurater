@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bookmark, ChefHat, HelpCircle, PlusCircle } from "lucide-react";
+import { BarChart2, Bookmark, ChefHat, HelpCircle, Map, PlusCircle } from "lucide-react";
 import { NavAuth } from "@/components/NavAuth";
 import "./globals.css";
 
@@ -21,11 +21,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </span>
               Dish Curator
             </Link>
-            <nav className="flex items-center gap-2">
+            <nav className="flex items-center gap-1">
+              <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/map">
+                <span className="flex items-center gap-1.5">
+                  <Map size={16} />
+                  <span className="hidden lg:inline">Map</span>
+                </span>
+              </Link>
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/how-it-works">
                 <span className="flex items-center gap-1.5">
                   <HelpCircle size={16} />
-                  <span className="hidden sm:inline">How it works</span>
+                  <span className="hidden lg:inline">How it works</span>
                 </span>
               </Link>
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/saved">
@@ -34,7 +40,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <span className="hidden sm:inline">Saved</span>
                 </span>
               </Link>
-              {/* NavAuth shows: display name + sign-out when logged in, or Sign in link */}
+              <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/dashboard">
+                <span className="flex items-center gap-1.5">
+                  <BarChart2 size={16} />
+                  <span className="hidden sm:inline">Dashboard</span>
+                </span>
+              </Link>
               <NavAuth />
               <Link className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black" href="/recommendations/new">
                 <span className="flex items-center gap-1.5">
