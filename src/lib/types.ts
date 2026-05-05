@@ -36,6 +36,8 @@ export type Database = {
           cuisine: string | null;
           created_by: string | null;
           is_verified: boolean;
+          lat: number | null;
+          lng: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -49,6 +51,8 @@ export type Database = {
           cuisine?: string | null;
           created_by?: string | null;
           is_verified?: boolean;
+          lat?: number | null;
+          lng?: number | null;
         };
         Update: Partial<Database["public"]["Tables"]["restaurants"]["Insert"]>;
         Relationships: [

@@ -64,8 +64,17 @@ export default function HomePage() {
     let query = supabase.from("dish_feed").select("*");
 
     if (tab === "trending") {
-      // Trending: order by (like_count + save_count) desc, then created_at desc
-      query = query.order("like_count", { ascending: false }).order("save_count", { ascending: false }).order("created_at", { ascending: false });
+      // Trending loads top 50 all at once — cursor pagination doesn't work with
+      // a sort key (like_count) that differs from the cursor key (created_at).
+      const { data, error } = await query
+        .order("like_count", { ascending: false })
+        .order("save_count", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!error && data) { setDishes(data); setHasMore(false); }
+      setLoading(false);
+      setLoadingMore(false);
+      return;
     } else if (tab === "following") {
       if (followingIds.length === 0) {
         setDishes([]);

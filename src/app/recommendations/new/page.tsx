@@ -84,12 +84,36 @@ export default function NewRecommendationPage() {
     return uploadImages.length > 0 && !uploadImages.some((img) => img.error);
   }
 
+  async function geocodeAddress(city: string): Promise<{ lat: number; lng: number } | null> {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`,
+        { headers: { "User-Agent": "DishCurator/1.0" } }
+      );
+      const data = await res.json();
+      if (data?.[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    } catch { /* non-fatal */ }
+    return null;
+  }
+
   async function resolveRestaurant() {
     if (!supabase || !userId) return null;
     if (selectedRestaurantId) return selectedRestaurantId;
+
+    // Geocode the city/address before inserting so the map works immediately
+    const geocity = newRestaurantCity || newRestaurantName;
+    const coords = geocity ? await geocodeAddress(geocity) : null;
+
     const { data, error } = await supabase
       .from("restaurants")
-      .insert({ name: newRestaurantName, city: newRestaurantCity || null, cuisine: newRestaurantCuisine || null, created_by: userId })
+      .insert({
+        name: newRestaurantName,
+        city: newRestaurantCity || null,
+        cuisine: newRestaurantCuisine || null,
+        created_by: userId,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+      })
       .select("id").single<{ id: string }>();
     if (error) throw error;
     return data.id;

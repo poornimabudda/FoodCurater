@@ -196,6 +196,19 @@ curl -X POST "https://api.vercel.com/v2/deployments/<deployment_id>/aliases" \
 
 ---
 
+## Content Moderation (Reports)
+
+User reports are stored in the `content_reports` table (fields: `reason`, `status`, `reporter_id`, `dish_recommendation_id`). There is no admin UI yet — review and act on reports directly in Supabase:
+
+1. Open Supabase dashboard → Table Editor → `content_reports`
+2. Filter by `status = 'pending'`
+3. To remove a reported dish: delete the row from `dish_recommendations` (cascades to all related tables)
+4. To dismiss a false report: update `status` to `'dismissed'`
+
+**Future work:** Build a simple `/admin` page (protected by a hardcoded admin user ID check) with a report queue and one-click dismiss/remove actions.
+
+---
+
 ## Engineering Rules (from AGENTS.md)
 
 1. Focus on **dishes**, not restaurants — always preserve dish-level value prop

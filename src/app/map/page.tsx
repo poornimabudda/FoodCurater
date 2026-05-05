@@ -7,7 +7,6 @@ import { MapPin, Star, UtensilsCrossed } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { MapRestaurant } from "@/components/MapView";
 
-// SSR must be disabled for Leaflet — it accesses window/document on mount
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
   loading: () => <div className="h-full w-full animate-pulse rounded-md bg-black/5" />,
@@ -19,8 +18,7 @@ type RestaurantWithDishes = MapRestaurant & {
   dishes: { id: string; dish_name: string; rating: number | null; image_url: string | null }[];
 };
 
-async function geocode(address: string, city: string | null): Promise<{ lat: number; lng: number } | null> {
-  const query = [address, city].filter(Boolean).join(", ");
+async function geocodeCity(query: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
@@ -36,21 +34,17 @@ export default function MapPage() {
   const [restaurants, setRestaurants] = useState<RestaurantWithDishes[]>([]);
   const [selected, setSelected] = useState<RestaurantWithDishes | null>(null);
   const [loading, setLoading] = useState(true);
-  const [geocoding, setGeocoding] = useState(false);
+  const [geocodingCount, setGeocodingCount] = useState(0);
 
   useEffect(() => {
     async function load() {
       if (!supabase) { setLoading(false); return; }
 
-      // Load all restaurants that have at least one dish
       const { data: restRows } = await supabase
         .from("restaurants")
-        .select("id, name, address, city, state, cuisine")
+        .select("id, name, address, city, cuisine, lat, lng")
         .order("name");
 
-      if (!restRows || restRows.length === 0) { setLoading(false); return; }
-
-      // Load dish summaries per restaurant
       const { data: dishRows } = await supabase
         .from("dish_feed")
         .select("id, dish_name, rating, image_url, restaurant_id")
@@ -62,43 +56,55 @@ export default function MapPage() {
         dishMap[dish.restaurant_id] = [...(dishMap[dish.restaurant_id] ?? []), dish];
       }
 
-      // Only include restaurants that have dishes
-      const withDishes = restRows.filter((r) => (dishMap[r.id]?.length ?? 0) > 0);
-      setLoading(false);
-      setGeocoding(true);
+      // Restaurants with dishes only
+      const withDishes = (restRows ?? []).filter((r) => (dishMap[r.id]?.length ?? 0) > 0);
 
-      // Geocode addresses (rate limited: 1 per second per Nominatim TOS)
-      const results: RestaurantWithDishes[] = [];
+      // Partition: already geocoded vs need geocoding
+      const ready: RestaurantWithDishes[] = [];
+      const needsGeocode: typeof withDishes = [];
+
       for (const r of withDishes) {
-        if (r.address || r.city) {
-          const coords = await geocode(r.address ?? r.city ?? "", r.city);
-          if (coords) {
-            const dishes = dishMap[r.id] ?? [];
-            results.push({
-              id: r.id,
-              name: r.name,
-              lat: coords.lat,
-              lng: coords.lng,
-              dishCount: dishes.length,
-              topDish: dishes[0]?.dish_name ?? null,
-              cuisine: r.cuisine,
-              address: r.address,
-              dishes: dishes.slice(0, 5),
-            });
-            setRestaurants([...results]);
-          }
-          // Respect Nominatim 1 req/sec rate limit
-          await new Promise((r) => setTimeout(r, 1100));
+        if (r.lat != null && r.lng != null) {
+          const dishes = dishMap[r.id] ?? [];
+          ready.push({
+            id: r.id, name: r.name, lat: r.lat, lng: r.lng,
+            dishCount: dishes.length, topDish: dishes[0]?.dish_name ?? null,
+            cuisine: r.cuisine, address: r.address, dishes: dishes.slice(0, 5),
+          });
+        } else if (r.address || r.city) {
+          needsGeocode.push(r);
         }
       }
-      setGeocoding(false);
+
+      setRestaurants(ready);
+      setLoading(false);
+
+      if (needsGeocode.length === 0) return;
+      setGeocodingCount(needsGeocode.length);
+
+      // Geocode missing ones one at a time, store result so it only happens once ever
+      for (const r of needsGeocode) {
+        const query = [r.address, r.city].filter(Boolean).join(", ");
+        const coords = await geocodeCity(query);
+        if (coords && supabase) {
+          // Store for next time
+          await supabase.from("restaurants").update({ lat: coords.lat, lng: coords.lng }).eq("id", r.id);
+          const dishes = dishMap[r.id] ?? [];
+          setRestaurants((prev) => [...prev, {
+            id: r.id, name: r.name, lat: coords.lat, lng: coords.lng,
+            dishCount: dishes.length, topDish: dishes[0]?.dish_name ?? null,
+            cuisine: r.cuisine, address: r.address, dishes: dishes.slice(0, 5),
+          }]);
+        }
+        setGeocodingCount((n) => n - 1);
+        await new Promise((res) => setTimeout(res, 1100));
+      }
     }
     load();
   }, []);
 
   function handleMarkerClick(r: MapRestaurant) {
-    const full = restaurants.find((x) => x.id === r.id) ?? null;
-    setSelected(full);
+    setSelected(restaurants.find((x) => x.id === r.id) ?? null);
   }
 
   return (
@@ -107,13 +113,16 @@ export default function MapPage() {
         <div className="flex items-center gap-2">
           <MapPin size={18} className="text-basil" />
           <h1 className="text-lg font-bold text-ink">Explore on map</h1>
-          {geocoding && <span className="text-xs text-ink/50">(geocoding restaurants...)</span>}
+          {geocodingCount > 0 && (
+            <span className="text-xs text-ink/50">
+              (locating {geocodingCount} restaurant{geocodingCount !== 1 ? "s" : ""}…)
+            </span>
+          )}
         </div>
         <Link href="/" className="text-sm font-medium text-ink/60 hover:text-ink">← Back to feed</Link>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Map */}
         <div className="flex-1 p-3">
           {loading ? (
             <div className="h-full rounded-md bg-black/5 animate-pulse" />
@@ -121,8 +130,8 @@ export default function MapPage() {
             <div className="flex h-full items-center justify-center rounded-md border border-dashed border-black/20 bg-white">
               <div className="text-center">
                 <MapPin size={32} className="mx-auto text-ink/20 mb-3" />
-                <p className="text-ink/60">No geocodable restaurants yet.</p>
-                <p className="mt-1 text-sm text-ink/40">Restaurants need an address or city to appear on the map.</p>
+                <p className="text-ink/60">No restaurants on the map yet.</p>
+                <p className="mt-1 text-sm text-ink/40">Add city info when posting a dish to appear here.</p>
               </div>
             </div>
           ) : (
@@ -130,7 +139,6 @@ export default function MapPage() {
           )}
         </div>
 
-        {/* Side panel */}
         <div className="w-72 shrink-0 overflow-y-auto border-l border-black/10 bg-white">
           {selected ? (
             <div className="p-4">
