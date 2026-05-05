@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LogOut, UserRound } from "lucide-react";
+import { BarChart2, Bookmark, ChevronDown, LogOut, UserRound } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export function NavAuth() {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -23,13 +25,11 @@ export function NavAuth() {
       setLoading(false);
     }
 
-    // Check current session immediately
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) loadUser(user.id);
       else { setDisplayName(null); setLoading(false); }
     });
 
-    // React to magic-link sign-in, sign-out, token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         setDisplayName(null);
@@ -42,35 +42,74 @@ export function NavAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
   async function signOut() {
     if (!supabase) return;
+    setOpen(false);
     await supabase.auth.signOut();
     window.location.href = "/";
   }
 
-  // Don't flash anything while checking
   if (loading) return null;
 
   if (displayName) {
     return (
-      <>
-        <Link
-          href="/profile"
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5"
-          title="Edit profile"
         >
           <UserRound size={16} />
           <span className="hidden max-w-[120px] truncate sm:inline">{displayName}</span>
-        </Link>
-        <button
-          onClick={signOut}
-          className="rounded-md p-2 text-ink/50 hover:bg-black/5 hover:text-ink"
-          aria-label="Sign out"
-          title="Sign out"
-        >
-          <LogOut size={16} />
+          <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
-      </>
+
+        {open && (
+          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-black/10 bg-white py-1 shadow-lg">
+            <Link
+              href="/saved"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-black/5"
+            >
+              <Bookmark size={15} />
+              Saved
+            </Link>
+            <Link
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-black/5"
+            >
+              <BarChart2 size={15} />
+              Dashboard
+            </Link>
+            <Link
+              href="/profile"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-black/5"
+            >
+              <UserRound size={15} />
+              Profile
+            </Link>
+            <div className="my-1 border-t border-black/10" />
+            <button
+              onClick={signOut}
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            >
+              <LogOut size={15} />
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 

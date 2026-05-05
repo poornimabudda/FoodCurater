@@ -10,7 +10,17 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import type { DishFeedItem } from "@/lib/types";
 
 const PAGE_SIZE = 20;
-type FeedTab = "latest" | "trending" | "following";
+type FeedTab = "latest" | "trending" | "following" | "for_you";
+
+interface TasteProfile {
+  topCuisine: string | null;
+  topTags: string[];
+}
+
+function trendingScore(d: DishFeedItem): number {
+  const ageDays = (Date.now() - new Date(d.created_at).getTime()) / 86400000;
+  return (d.like_count ?? 0) + (d.save_count ?? 0) * 0.5 + Math.max(0, 14 - ageDays) / 14 * 10;
+}
 
 export default function HomePage() {
   const [tab, setTab] = useState<FeedTab>("latest");
@@ -33,22 +43,43 @@ export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userPostCount, setUserPostCount] = useState<number | null>(null);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [tasteProfile, setTasteProfile] = useState<TasteProfile | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Load auth state + following list once
+  // Load auth state + following list + taste profile once
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user || !supabase) return;
       setUserId(user.id);
 
-      const [postRes, followRes] = await Promise.all([
+      const [postRes, followRes, savedRes] = await Promise.all([
         supabase.from("dish_recommendations").select("id", { count: "exact", head: true }).eq("curator_id", user.id),
         supabase.from("follows").select("following_id").eq("follower_id", user.id),
+        supabase.from("saved_dishes").select("dish_recommendation_id").eq("user_id", user.id),
       ]);
       setUserPostCount(postRes.count ?? 0);
       setFollowingIds((followRes.data ?? []).map((r) => r.following_id));
+
+      // Compute taste profile from saved dishes
+      const savedIds = (savedRes.data ?? []).map((r) => r.dish_recommendation_id);
+      if (savedIds.length > 0 && supabase) {
+        const { data: savedFeed } = await supabase.from("dish_feed").select("cuisine, tags").in("id", savedIds);
+        if (savedFeed && savedFeed.length > 0) {
+          const cuisineCounts: Record<string, number> = {};
+          const tagCounts: Record<string, number> = {};
+          for (const row of savedFeed) {
+            if (row.cuisine) cuisineCounts[row.cuisine] = (cuisineCounts[row.cuisine] ?? 0) + 1;
+            for (const tag of row.tags ?? []) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+          }
+          const topCuisine = Object.keys(cuisineCounts).length > 0
+            ? Object.entries(cuisineCounts).sort((a, b) => b[1] - a[1])[0][0]
+            : null;
+          const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => t);
+          setTasteProfile({ topCuisine, topTags });
+        }
+      }
     });
   }, []);
 
@@ -69,18 +100,46 @@ export default function HomePage() {
     let query = supabase.from("dish_feed").select("*");
 
     if (tab === "trending") {
-      // Trending loads top 50 all at once — cursor pagination doesn't work with
-      // a sort key (like_count) that differs from the cursor key (created_at).
+      // Load top 50 then re-rank by recency-weighted score
       const { data, error } = await query
         .order("like_count", { ascending: false })
         .order("save_count", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!error && data) {
+        const sorted = [...data].sort((a, b) => trendingScore(b) - trendingScore(a));
+        setDishes(sorted);
+        setHasMore(false);
+      }
+      setLoading(false);
+      setLoadingMore(false);
+      return;
+    }
+
+    if (tab === "for_you") {
+      if (!tasteProfile || (tasteProfile.topCuisine === null && tasteProfile.topTags.length === 0)) {
+        // Fall back to latest
+        const { data, error } = await query.order("created_at", { ascending: false }).limit(50);
+        if (!error && data) { setDishes(data); setHasMore(false); }
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+      const orParts: string[] = [];
+      if (tasteProfile.topCuisine) orParts.push(`cuisine.eq.${tasteProfile.topCuisine}`);
+      if (tasteProfile.topTags.length > 0) orParts.push(`tags.ov.{${tasteProfile.topTags.join(",")}}`);
+      const { data, error } = await query
+        .or(orParts.join(","))
+        .order("like_count", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(50);
       if (!error && data) { setDishes(data); setHasMore(false); }
       setLoading(false);
       setLoadingMore(false);
       return;
-    } else if (tab === "following") {
+    }
+
+    if (tab === "following") {
       if (followingIds.length === 0) {
         setDishes([]);
         setHasMore(false);
@@ -109,13 +168,13 @@ export default function HomePage() {
     setLoading(false);
     setLoadingMore(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, followingIds, cursor]);
+  }, [tab, followingIds, tasteProfile, cursor]);
 
   // Re-fetch when tab changes
   useEffect(() => {
     fetchPage(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, followingIds]);
+  }, [tab, followingIds, tasteProfile]);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -195,6 +254,17 @@ export default function HomePage() {
   }
 
   const showNewCuratorNudge = userId !== null && userPostCount === 0;
+
+  const TAB_LABELS: Record<FeedTab, string> = {
+    latest: "Latest",
+    trending: "Trending",
+    following: "Following",
+    for_you: "For you",
+  };
+
+  const visibleTabs: FeedTab[] = userId
+    ? ["latest", "trending", "following", "for_you"]
+    : ["latest", "trending", "following"];
 
   return (
     <main>
@@ -333,15 +403,15 @@ export default function HomePage() {
 
         {/* Feed tabs */}
         <div className="mb-4 flex gap-1 rounded-md border border-black/10 bg-white p-1 shadow-soft w-fit">
-          {(["latest", "trending", "following"] as FeedTab[]).map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`rounded-md px-4 py-1.5 text-sm font-semibold capitalize transition-colors ${
+              className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${
                 tab === t ? "bg-ink text-white" : "text-ink/60 hover:text-ink"
               }`}
             >
-              {t}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </div>
@@ -380,6 +450,15 @@ export default function HomePage() {
               Browse all dishes
             </button>
           </div>
+        )}
+
+        {/* For you tab hint */}
+        {!loading && tab === "for_you" && (
+          <p className="mb-4 text-xs text-ink/40">
+            {tasteProfile && (tasteProfile.topCuisine || tasteProfile.topTags.length > 0)
+              ? `Picked based on your saved dishes${tasteProfile.topCuisine ? ` · ${tasteProfile.topCuisine}` : ""}${tasteProfile.topTags.length > 0 ? ` · ${tasteProfile.topTags.map(t => t.replace(/_/g, " ")).join(", ")}` : ""}`
+              : "Save dishes to personalise this tab."}
+          </p>
         )}
 
         {!loading && filteredDishes.length === 0 && !(tab === "following" && followingIds.length === 0) ? (

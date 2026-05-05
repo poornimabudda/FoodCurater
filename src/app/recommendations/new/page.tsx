@@ -13,10 +13,18 @@ type Restaurant = Pick<RestaurantRow, "id" | "name" | "city" | "cuisine">;
 type Step = 1 | 2 | 3;
 
 const STEP_LABELS: Record<Step, string> = {
-  1: "Where did you eat?",
-  2: "Tell us about the dish",
+  1: "Tell us about the dish",
+  2: "Where did you eat?",
   3: "Photos & tags",
 };
+
+const AVAILABILITY_OPTIONS = [
+  { value: "all_day",  label: "All day" },
+  { value: "lunch",    label: "Lunch only" },
+  { value: "dinner",   label: "Dinner only" },
+  { value: "seasonal", label: "Seasonal" },
+  { value: "weekend",  label: "Weekends only" },
+];
 
 export default function NewRecommendationPage() {
   const [step, setStep] = useState<Step>(1);
@@ -24,15 +32,10 @@ export default function NewRecommendationPage() {
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
 
-  // Step 1 — restaurant
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
-  const [newRestaurantName, setNewRestaurantName] = useState("");
-  const [newRestaurantCity, setNewRestaurantCity] = useState("");
-  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
-
-  // Step 2 — dish
+  // Step 1 — dish
   const [dishName, setDishName] = useState("");
   const [description, setDescription] = useState("");
+  const [highlight, setHighlight] = useState("");
   const [rating, setRating] = useState(5);
   const [priceEstimate, setPriceEstimate] = useState("");
   const [isVegetarian, setIsVegetarian] = useState(false);
@@ -40,6 +43,13 @@ export default function NewRecommendationPage() {
   const [isPersonallyTasted, setIsPersonallyTasted] = useState(true);
   const [courseType, setCourseType] = useState("");
   const [pairsWellWith, setPairsWellWith] = useState("");
+  const [availability, setAvailability] = useState("");
+
+  // Step 2 — restaurant
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
+  const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [newRestaurantCity, setNewRestaurantCity] = useState("");
+  const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
 
   // Step 3 — photos + tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -72,12 +82,12 @@ export default function NewRecommendationPage() {
   }
 
   function step1Valid() {
-    if (selectedRestaurantId) return true;
-    return newRestaurantName.trim().length > 0;
+    return dishName.trim().length > 0;
   }
 
   function step2Valid() {
-    return dishName.trim().length > 0;
+    if (selectedRestaurantId) return true;
+    return newRestaurantName.trim().length > 0;
   }
 
   function step3Valid() {
@@ -100,7 +110,6 @@ export default function NewRecommendationPage() {
     if (!supabase || !userId) return null;
     if (selectedRestaurantId) return selectedRestaurantId;
 
-    // Geocode the city/address before inserting so the map works immediately
     const geocity = newRestaurantCity || newRestaurantName;
     const coords = geocity ? await geocodeAddress(geocity) : null;
 
@@ -156,6 +165,8 @@ export default function NewRecommendationPage() {
           is_personally_tasted: isPersonallyTasted,
           course_type: courseType || null,
           pairs_well_with: pairsWellWith || null,
+          highlight: highlight.trim() || null,
+          availability: availability || null,
         })
         .select("id").single<{ id: string }>();
       if (recError) throw recError;
@@ -216,7 +227,13 @@ export default function NewRecommendationPage() {
             View your dish →
           </Link>
           <button
-            onClick={() => { setStep(1); setNewDishId(null); setDishName(""); setDescription(""); setCourseType(""); setPairsWellWith(""); setSelectedTags([]); setUploadImages([]); setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantCity(""); setNewRestaurantCuisine(""); }}
+            onClick={() => {
+              setStep(1);
+              setNewDishId(null);
+              setDishName(""); setDescription(""); setHighlight(""); setCourseType(""); setPairsWellWith(""); setAvailability("");
+              setSelectedTags([]); setUploadImages([]);
+              setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantCity(""); setNewRestaurantCuisine("");
+            }}
             className="rounded-md border border-black/15 px-5 py-2 text-sm font-semibold text-ink hover:bg-black/5"
           >
             Post another
@@ -249,8 +266,70 @@ export default function NewRecommendationPage() {
       <div className="rounded-md border border-black/10 bg-white p-6 shadow-soft">
         <h2 className="mb-5 text-xl font-bold text-ink">{STEP_LABELS[step]}</h2>
 
-        {/* ── Step 1: Restaurant ─────────────────────────────────────────── */}
+        {/* ── Step 1: Dish details ──────────────────────────────────────── */}
         {step === 1 && (
+          <div className="grid gap-4">
+            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" value={dishName} onChange={(e) => setDishName(e.target.value)} />
+            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div>
+              <input
+                className="w-full rounded-md border border-black/15 px-3 py-2"
+                placeholder="What makes this dish special here? (optional)"
+                maxLength={200}
+                value={highlight}
+                onChange={(e) => setHighlight(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-ink/40">e.g. "House-made XO sauce, only available at this branch"</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Course type
+                <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={courseType} onChange={(e) => setCourseType(e.target.value)}>
+                  <option value="">Not specified</option>
+                  {courseTypes.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Availability
+                <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={availability} onChange={(e) => setAvailability(e.target.value)}>
+                  <option value="">Not specified</option>
+                  {AVAILABILITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Pairs well with
+                <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Price ($)
+                <input type="number" min="0" step="0.01" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
+              </label>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Rating (1–5)
+                <input type="number" min="1" max="5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                Spice level (0–5)
+                <input type="number" min="0" max="5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={isVegetarian} onChange={(e) => setIsVegetarian(e.target.checked)} />Vegetarian
+              </label>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={isPersonallyTasted} onChange={(e) => setIsPersonallyTasted(e.target.checked)} />Personally tasted
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Restaurant ──────────────────────────────────────────── */}
+        {step === 2 && (
           <div className="grid gap-4">
             <select
               className="rounded-md border border-black/15 px-3 py-2"
@@ -271,49 +350,6 @@ export default function NewRecommendationPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ── Step 2: Dish details ──────────────────────────────────────── */}
-        {step === 2 && (
-          <div className="grid gap-4">
-            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" value={dishName} onChange={(e) => setDishName(e.target.value)} />
-            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" value={description} onChange={(e) => setDescription(e.target.value)} />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Course type
-                <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={courseType} onChange={(e) => setCourseType(e.target.value)}>
-                  <option value="">Not specified</option>
-                  {courseTypes.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Pairs well with
-                <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Rating (1–5)
-                <input type="number" min="1" max="5" className="rounded-md border border-black/15 px-3 py-2" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Price ($)
-                <input type="number" min="0" step="0.01" className="rounded-md border border-black/15 px-3 py-2" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Spice (0–5)
-                <input type="number" min="0" max="5" className="rounded-md border border-black/15 px-3 py-2" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isVegetarian} onChange={(e) => setIsVegetarian(e.target.checked)} />Vegetarian
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isPersonallyTasted} onChange={(e) => setIsPersonallyTasted(e.target.checked)} />Personally tasted
-              </label>
-            </div>
           </div>
         )}
 

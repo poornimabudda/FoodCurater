@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MapPin, Star, UtensilsCrossed } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import type { MapRestaurant } from "@/components/MapView";
+import type { MapBounds, MapRestaurant } from "@/components/MapView";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
   ssr: false,
@@ -33,6 +33,7 @@ async function geocodeCity(query: string): Promise<{ lat: number; lng: number } 
 export default function MapPage() {
   const [restaurants, setRestaurants] = useState<RestaurantWithDishes[]>([]);
   const [selected, setSelected] = useState<RestaurantWithDishes | null>(null);
+  const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [loading, setLoading] = useState(true);
   const [geocodingCount, setGeocodingCount] = useState(0);
 
@@ -56,10 +57,8 @@ export default function MapPage() {
         dishMap[dish.restaurant_id] = [...(dishMap[dish.restaurant_id] ?? []), dish];
       }
 
-      // Restaurants with dishes only
       const withDishes = (restRows ?? []).filter((r) => (dishMap[r.id]?.length ?? 0) > 0);
 
-      // Partition: already geocoded vs need geocoding
       const ready: RestaurantWithDishes[] = [];
       const needsGeocode: typeof withDishes = [];
 
@@ -82,12 +81,10 @@ export default function MapPage() {
       if (needsGeocode.length === 0) return;
       setGeocodingCount(needsGeocode.length);
 
-      // Geocode missing ones one at a time, store result so it only happens once ever
       for (const r of needsGeocode) {
         const query = [r.address, r.city].filter(Boolean).join(", ");
         const coords = await geocodeCity(query);
         if (coords && supabase) {
-          // Store for next time
           await supabase.from("restaurants").update({ lat: coords.lat, lng: coords.lng }).eq("id", r.id);
           const dishes = dishMap[r.id] ?? [];
           setRestaurants((prev) => [...prev, {
@@ -106,6 +103,20 @@ export default function MapPage() {
   function handleMarkerClick(r: MapRestaurant) {
     setSelected(restaurants.find((x) => x.id === r.id) ?? null);
   }
+
+  // Restaurants whose markers are within the current map viewport
+  const areaRestaurants = bounds
+    ? restaurants.filter(
+        (r) =>
+          r.lat >= bounds.sw.lat && r.lat <= bounds.ne.lat &&
+          r.lng >= bounds.sw.lng && r.lng <= bounds.ne.lng
+      )
+    : restaurants;
+
+  // Flatten to dishes sorted by rating desc for the sidebar
+  const areaDishes = areaRestaurants.flatMap((r) =>
+    r.dishes.map((d) => ({ ...d, restaurantName: r.name, restaurantId: r.id }))
+  ).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 20);
 
   return (
     <main className="flex h-[calc(100vh-65px)] flex-col">
@@ -135,13 +146,19 @@ export default function MapPage() {
               </div>
             </div>
           ) : (
-            <MapView restaurants={restaurants} onMarkerClick={handleMarkerClick} />
+            <MapView restaurants={restaurants} onMarkerClick={handleMarkerClick} onBoundsChange={setBounds} />
           )}
         </div>
 
         <div className="w-72 shrink-0 overflow-y-auto border-l border-black/10 bg-white">
           {selected ? (
             <div className="p-4">
+              <button
+                onClick={() => setSelected(null)}
+                className="mb-3 text-xs font-medium text-ink/50 hover:text-ink"
+              >
+                ← All dishes in area
+              </button>
               <div className="flex items-start gap-3 mb-4">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-basil/10">
                   <UtensilsCrossed size={20} className="text-basil" />
@@ -173,11 +190,39 @@ export default function MapPage() {
               </Link>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center p-6 text-center">
-              <div>
-                <MapPin size={28} className="mx-auto text-ink/20 mb-3" />
-                <p className="text-sm text-ink/50">Click a marker to see dishes at that restaurant.</p>
-              </div>
+            <div className="p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink/40">
+                Dishes in this area
+                {areaRestaurants.length > 0 && (
+                  <span className="ml-1 font-normal normal-case text-ink/30">
+                    · {areaRestaurants.length} spot{areaRestaurants.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </p>
+              {areaDishes.length === 0 ? (
+                <div className="flex flex-col items-center py-10 text-center">
+                  <MapPin size={28} className="mx-auto text-ink/20 mb-3" />
+                  <p className="text-sm text-ink/50">No dishes in this area yet.</p>
+                  <p className="mt-1 text-xs text-ink/30">Pan the map to explore other neighbourhoods.</p>
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {areaDishes.map((d) => (
+                    <Link key={d.id} href={`/dishes/${d.id}`}
+                      className="rounded-md border border-black/10 p-2.5 hover:bg-black/[0.02]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-ink truncate">{d.dish_name}</span>
+                        {d.rating !== null && (
+                          <span className="ml-2 flex shrink-0 items-center gap-0.5 text-xs font-semibold text-ink/60">
+                            <Star size={11} className="fill-saffron text-saffron" />{d.rating}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-ink/40 truncate">{d.restaurantName}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

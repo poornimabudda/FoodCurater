@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bookmark, ChevronLeft, FolderOpen, ListPlus, Plus, Trash2, X } from "lucide-react";
+import { Bookmark, ChevronLeft, FolderOpen, Heart, ListPlus, Plus, Trash2, X } from "lucide-react";
 import { DishCard } from "@/components/DishCard";
+import { ShareButton } from "@/components/ShareButton";
 import { TriedItButton } from "@/components/TriedItButton";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { SetupNotice } from "@/components/SetupNotice";
@@ -275,16 +276,33 @@ export default function SavedPage() {
             <button onClick={() => setActiveTab("want")} className="mt-4 text-sm font-medium text-basil hover:underline">Go to want to try</button>
           </div>
         ) : (
-          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {triedDishes.map((dish) => (
-              <div key={dish.id} className="flex flex-col">
-                <DishCard dish={dish} />
-                <div className="mt-2 px-1">
-                  <TriedItButton dishId={dish.id} currentStatus={triedMap[dish.id] ?? null} onStatusChange={handleTriedChange} />
+          <>
+            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {triedDishes.map((dish) => (
+                <div key={dish.id} className="flex flex-col">
+                  <DishCard dish={dish} />
+                  <div className="mt-2 px-1">
+                    <TriedItButton dishId={dish.id} currentStatus={triedMap[dish.id] ?? null} onStatusChange={handleTriedChange} />
+                  </div>
                 </div>
+              ))}
+            </div>
+            <div className="mt-10 flex flex-col items-center gap-3 rounded-xl border border-saffron/30 bg-saffron/5 px-6 py-8 text-center">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-saffron/20">
+                <Heart size={22} className="text-saffron" />
               </div>
-            ))}
-          </div>
+              <p className="font-semibold text-ink">Loved a dish? Help fellow food lovers.</p>
+              <p className="max-w-sm text-sm text-ink/60">
+                Your honest take — what made it special, who should order it — could be exactly what someone needs before they decide.
+              </p>
+              <Link
+                href="/recommendations/new"
+                className="mt-1 inline-flex items-center gap-2 rounded-md bg-ink px-5 py-2 text-sm font-semibold text-white hover:bg-black"
+              >
+                Post your recommendation
+              </Link>
+            </div>
+          </>
         )
       )}
 
@@ -399,14 +417,21 @@ export default function SavedPage() {
                         <p className="font-semibold text-ink hover:underline">{coll.name}</p>
                         <p className="mt-0.5 text-xs text-ink/50">{count} {count === 1 ? "dish" : "dishes"}</p>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteCollection(coll.id)}
-                        className="shrink-0 rounded p-1 text-ink/30 hover:text-tomato"
-                        title="Delete list"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <ShareButton
+                          title={`${coll.name} – Dish Curator`}
+                          path={`/collections/${coll.id}`}
+                          className="rounded p-1 text-ink/30 hover:text-ink/70"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => deleteCollection(coll.id)}
+                          className="rounded p-1 text-ink/30 hover:text-tomato"
+                          title="Delete list"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

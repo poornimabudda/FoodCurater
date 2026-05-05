@@ -13,21 +13,26 @@ export type MapRestaurant = {
   topDish: string | null;
 };
 
+export type MapBounds = {
+  sw: { lat: number; lng: number };
+  ne: { lat: number; lng: number };
+};
+
 type Props = {
   restaurants: MapRestaurant[];
   onMarkerClick: (restaurant: MapRestaurant) => void;
+  onBoundsChange?: (bounds: MapBounds) => void;
 };
 
-export function MapView({ restaurants, onMarkerClick }: Props) {
+export function MapView({ restaurants, onMarkerClick, onBoundsChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+  const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // Leaflet must be imported dynamically in Next.js to avoid SSR issues
     import("leaflet").then((L) => {
-      // Fix default marker icon paths broken by webpack
       const proto = L.Icon.Default.prototype as unknown as Record<string, unknown>;
       delete proto._getIconUrl;
       L.Icon.Default.mergeOptions({
@@ -38,7 +43,7 @@ export function MapView({ restaurants, onMarkerClick }: Props) {
 
       const defaultCenter: [number, number] = restaurants.length > 0
         ? [restaurants[0].lat, restaurants[0].lng]
-        : [40.7128, -74.006]; // NYC fallback
+        : [40.7128, -74.006];
 
       const map = L.map(containerRef.current!).setView(defaultCenter, 13);
       mapRef.current = map;
@@ -47,6 +52,23 @@ export function MapView({ restaurants, onMarkerClick }: Props) {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
       }).addTo(map);
+
+      function emitBounds() {
+        if (!onBoundsChange) return;
+        const b = map.getBounds();
+        onBoundsChange({
+          sw: { lat: b.getSouth(), lng: b.getWest() },
+          ne: { lat: b.getNorth(), lng: b.getEast() },
+        });
+      }
+
+      function debouncedEmit() {
+        if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current);
+        boundsTimerRef.current = setTimeout(emitBounds, 300);
+      }
+
+      map.on("moveend", debouncedEmit);
+      map.on("zoomend", debouncedEmit);
 
       restaurants.forEach((r) => {
         const popup = L.popup().setContent(
@@ -62,14 +84,17 @@ export function MapView({ restaurants, onMarkerClick }: Props) {
           .on("click", () => onMarkerClick(r));
       });
 
-      // Fit map to markers if any
       if (restaurants.length > 1) {
         const group = L.featureGroup(restaurants.map((r) => L.marker([r.lat, r.lng])));
         map.fitBounds(group.getBounds().pad(0.2));
       }
+
+      // Emit initial bounds after the map settles
+      setTimeout(emitBounds, 400);
     });
 
     return () => {
+      if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
     };

@@ -84,6 +84,8 @@ export type Database = {
           image_url: string | null;
           course_type: string | null;
           pairs_well_with: string | null;
+          highlight: string | null;
+          availability: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -101,6 +103,8 @@ export type Database = {
           image_url?: string | null;
           course_type?: string | null;
           pairs_well_with?: string | null;
+          highlight?: string | null;
+          availability?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["dish_recommendations"]["Insert"]>;
         Relationships: [
@@ -429,6 +433,8 @@ export type Database = {
           curator_dish_count: number | null;
           course_type: string | null;
           pairs_well_with: string | null;
+          highlight: string | null;
+          availability: string | null;
         };
         Relationships: [];
       };
