@@ -40,6 +40,7 @@ export default function DishDetailPage() {
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
@@ -64,7 +65,18 @@ export default function DishDetailPage() {
         supabase.from("dish_images").select("url, position").eq("dish_recommendation_id", id).order("position"),
       ]);
 
-      if (dishRes.error || !dishRes.data) { setNotFound(true); setLoading(false); return; }
+      if (dishRes.error) {
+        console.error("[dish detail] query error:", dishRes.error);
+        // PGRST116 = no rows returned (.single() found nothing) — genuine 404
+        if (dishRes.error.code === "PGRST116") {
+          setNotFound(true);
+        } else {
+          setLoadError(dishRes.error.message ?? "Could not load dish details.");
+        }
+        setLoading(false);
+        return;
+      }
+      if (!dishRes.data) { setNotFound(true); setLoading(false); return; }
 
       const tags = (dishRes.data.dish_recommendation_tags as any[])
         .map((row) => row.taste_tags?.name).filter(Boolean) as string[];
@@ -90,6 +102,15 @@ export default function DishDetailPage() {
   }, [id]);
 
   if (loading) return <main className="mx-auto max-w-3xl px-4 py-10"><p className="text-ink/60">Loading dish...</p></main>;
+
+  if (loadError) return (
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <p className="font-semibold text-ink">Something went wrong loading this dish.</p>
+      <p className="mt-1 rounded-md bg-black/5 px-3 py-2 font-mono text-sm text-ink/60">{loadError}</p>
+      <Link href="/" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-basil hover:underline"><ChevronLeft size={16} />Back to feed</Link>
+    </main>
+  );
+
   if (notFound || !dish) return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <p className="text-ink/60">Dish not found.</p>

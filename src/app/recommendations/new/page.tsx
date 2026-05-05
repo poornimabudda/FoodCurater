@@ -13,6 +13,7 @@ type Restaurant = Pick<RestaurantRow, "id" | "name" | "city" | "cuisine">;
 
 export default function NewRecommendationPage() {
   const [userId, setUserId] = useState<string | null>(null);
+  const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [newRestaurantName, setNewRestaurantName] = useState("");
@@ -30,20 +31,35 @@ export default function NewRecommendationPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [uploadImages, setUploadImages] = useState<ImagePreview[]>([]);
   const [message, setMessage] = useState("");
+  const [newDishId, setNewDishId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       if (!supabase) { setLoading(false); return; }
+
       const { data: userData } = await supabase.auth.getUser();
-      setUserId(userData.user?.id ?? null);
-      const { data } = await supabase
-        .from("restaurants")
-        .select("id, name, city, cuisine")
-        .order("name")
-        .returns<Restaurant[]>();
-      setRestaurants(data ?? []);
+      const user = userData.user;
+      setUserId(user?.id ?? null);
+
+      if (user) {
+        // Check if the user has a profile row — required before posting
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("id", user.id)
+          .maybeSingle();
+        setHasProfile(!!profileData?.display_name);
+
+        const { data } = await supabase
+          .from("restaurants")
+          .select("id, name, city, cuisine")
+          .order("name")
+          .returns<Restaurant[]>();
+        setRestaurants(data ?? []);
+      }
+
       setLoading(false);
     }
     loadData();
@@ -72,7 +88,7 @@ export default function NewRecommendationPage() {
       const img = uploadImages[i];
       const path = `${recommendationId}/${i}_${Date.now()}.jpg`;
       const { error } = await supabase.storage.from("food_images").upload(path, img.file, { upsert: true });
-      if (error) throw error;
+      if (error) throw new Error(`Photo upload failed: ${error.message}`);
       const { data } = supabase.storage.from("food_images").getPublicUrl(path);
       results.push({ url: data.publicUrl, position: i });
     }
@@ -83,10 +99,11 @@ export default function NewRecommendationPage() {
     event.preventDefault();
     if (!supabase || !userId) return;
     if (uploadImages.length === 0) { setMessage("Add at least one photo before posting."); return; }
-    if (uploadImages.some((img) => img.error)) { setMessage("Fix photo errors before posting."); return; }
+    if (uploadImages.some((img) => img.error)) { setMessage("Fix the photo errors before posting."); return; }
 
     setSaving(true);
     setMessage("");
+    setNewDishId(null);
 
     try {
       const restaurantId = await resolveRestaurant();
@@ -113,11 +130,16 @@ export default function NewRecommendationPage() {
 
       const imageResults = await uploadAllImages(recommendation.id);
       if (imageResults.length > 0) {
-        // Mirror primary URL back to dish_recommendations for feed queries
-        await supabase.from("dish_recommendations").update({ image_url: imageResults[0].url }).eq("id", recommendation.id);
-        await supabase.from("dish_images").insert(
-          imageResults.map((r) => ({ dish_recommendation_id: recommendation.id, url: r.url, position: r.position }))
-        );
+        const { error: urlError } = await supabase
+          .from("dish_recommendations")
+          .update({ image_url: imageResults[0].url })
+          .eq("id", recommendation.id);
+        if (urlError) throw new Error(`Saving primary image failed: ${urlError.message}`);
+
+        const { error: imagesError } = await supabase
+          .from("dish_images")
+          .insert(imageResults.map((r) => ({ dish_recommendation_id: recommendation.id, url: r.url, position: r.position })));
+        if (imagesError) throw new Error(`Saving image gallery failed: ${imagesError.message}`);
       }
 
       if (selectedTags.length > 0) {
@@ -133,10 +155,12 @@ export default function NewRecommendationPage() {
         if (error) throw error;
       }
 
-      setMessage("Recommendation posted. It will appear in the feed.");
+      setNewDishId(recommendation.id);
+      setMessage("Recommendation posted successfully.");
       setDishName(""); setDescription(""); setCourseType(""); setPairsWellWith("");
       setSelectedTags([]); setUploadImages([]);
     } catch (error) {
+      console.error("[new recommendation] save error:", error);
       setMessage(error instanceof Error ? error.message : "Could not save recommendation.");
     } finally {
       setSaving(false);
@@ -149,7 +173,9 @@ export default function NewRecommendationPage() {
       <p className="mt-2 text-ink/70">Focus on what someone should order and why it is worth trying.</p>
 
       {!isSupabaseConfigured ? <div className="mt-6"><SetupNotice /></div> : null}
-      {loading ? <p className="mt-6 text-ink/60">Loading form...</p> : null}
+      {loading ? <p className="mt-6 text-ink/60">Loading...</p> : null}
+
+      {/* Not signed in */}
       {!loading && isSupabaseConfigured && !userId ? (
         <div className="mt-6 rounded-md border border-black/10 bg-white p-6 shadow-soft">
           <p className="font-semibold text-ink">Sign in before posting a recommendation.</p>
@@ -157,7 +183,32 @@ export default function NewRecommendationPage() {
         </div>
       ) : null}
 
-      {userId ? (
+      {/* Signed in but no profile yet */}
+      {userId && hasProfile === false ? (
+        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-6">
+          <p className="font-semibold text-ink">Set up your profile before posting.</p>
+          <p className="mt-1 text-sm text-ink/70">Your display name and curator type help people trust your recommendations.</p>
+          <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/profile">Create profile</Link>
+        </div>
+      ) : null}
+
+      {/* Post-success state */}
+      {newDishId ? (
+        <div className="mt-6 rounded-md border border-basil/20 bg-basil/5 p-6">
+          <p className="font-semibold text-basil">Recommendation posted!</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Link href={`/dishes/${newDishId}`} className="inline-flex rounded-md bg-basil px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+              View your dish →
+            </Link>
+            <button onClick={() => setNewDishId(null)} className="rounded-md border border-black/15 px-4 py-2 text-sm font-semibold text-ink hover:bg-black/5">
+              Post another
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* The form — only show if logged in, has profile, and hasn't just posted */}
+      {userId && hasProfile && !newDishId ? (
         <form className="mt-6 grid gap-6 rounded-md border border-black/10 bg-white p-6 shadow-soft" onSubmit={saveRecommendation}>
 
           {/* Restaurant */}
@@ -263,7 +314,11 @@ export default function NewRecommendationPage() {
             <Send size={18} />
             {saving ? "Posting..." : "Post recommendation"}
           </button>
-          {message && <p className="text-sm text-ink/70">{message}</p>}
+          {message && (
+            <p className={`text-sm ${message.startsWith("Add") || message.startsWith("Fix") ? "text-tomato" : "text-ink/70"}`}>
+              {message}
+            </p>
+          )}
         </form>
       ) : null}
     </main>

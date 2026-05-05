@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bookmark, ChefHat, HelpCircle, PlusCircle, UserRound } from "lucide-react";
+import { Bookmark, ChefHat, HelpCircle, PlusCircle } from "lucide-react";
+import { NavAuth } from "@/components/NavAuth";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,27 +23,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav className="flex items-center gap-2">
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/how-it-works">
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
                   <HelpCircle size={16} />
                   <span className="hidden sm:inline">How it works</span>
                 </span>
               </Link>
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/saved">
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
                   <Bookmark size={16} />
-                  Saved
+                  <span className="hidden sm:inline">Saved</span>
                 </span>
               </Link>
-              <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/profile">
-                <span className="flex items-center gap-2">
-                  <UserRound size={16} />
-                  Profile
-                </span>
-              </Link>
+              {/* NavAuth shows: display name + sign-out when logged in, or Sign in link */}
+              <NavAuth />
               <Link className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black" href="/recommendations/new">
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5">
                   <PlusCircle size={16} />
-                  Recommend
+                  <span className="hidden sm:inline">Recommend</span>
                 </span>
               </Link>
             </nav>

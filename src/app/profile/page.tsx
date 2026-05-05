@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Save } from "lucide-react";
+import { LogOut, Save } from "lucide-react";
 import { SetupNotice } from "@/components/SetupNotice";
 import { curatorTypes } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -27,6 +27,12 @@ export default function ProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  }
 
   useEffect(() => {
     async function loadProfile() {
@@ -115,10 +121,20 @@ export default function ProfilePage() {
             <span className="text-sm font-semibold">Bio</span>
             <textarea className="mt-2 min-h-28 w-full rounded-md border border-black/15 px-3 py-2" value={profile.bio} onChange={(event) => setProfile({ ...profile, bio: event.target.value })} />
           </label>
-          <button className="inline-flex w-fit items-center gap-2 rounded-md bg-basil px-4 py-2 font-semibold text-white">
-            <Save size={18} />
-            Save profile
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="inline-flex w-fit items-center gap-2 rounded-md bg-basil px-4 py-2 font-semibold text-white">
+              <Save size={18} />
+              Save profile
+            </button>
+            <button
+              type="button"
+              onClick={signOut}
+              className="inline-flex w-fit items-center gap-2 rounded-md border border-black/15 px-4 py-2 text-sm font-semibold text-ink/60 hover:bg-black/5 hover:text-ink"
+            >
+              <LogOut size={16} />
+              Sign out
+            </button>
+          </div>
           {message ? <p className="text-sm text-ink/70">{message}</p> : null}
         </form>
       ) : null}
