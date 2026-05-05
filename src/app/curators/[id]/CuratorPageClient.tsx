@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, User } from "lucide-react";
+import { ChevronLeft, Flame, User } from "lucide-react";
 import { DishCard } from "@/components/DishCard";
 import { FollowButton } from "@/components/FollowButton";
+import { ShareButton } from "@/components/ShareButton";
 import { supabase } from "@/lib/supabase";
 import type { DishFeedItem, ProfileRow } from "@/lib/types";
 
@@ -70,6 +71,15 @@ export function CuratorPageClient({ id }: { id: string }) {
   const hasSpecializations = topTags.length > 0 || topCuisine !== null;
   const isOwnProfile = viewerId === id;
 
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const isActive = dishes.some(
+    (d) => d.created_at && Date.now() - new Date(d.created_at).getTime() < SEVEN_DAYS_MS
+  );
+  const isObsessedActive =
+    profile.obsessed_with &&
+    profile.obsessed_with_updated_at &&
+    Date.now() - new Date(profile.obsessed_with_updated_at).getTime() < SEVEN_DAYS_MS;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <Link href="/" className="inline-flex items-center gap-1 text-sm font-medium text-ink/60 hover:text-ink">
@@ -83,19 +93,43 @@ export function CuratorPageClient({ id }: { id: string }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold text-ink">{profile.display_name}</h1>
-              {!isOwnProfile && viewerId && (
-                <FollowButton
-                  curatorId={id}
-                  viewerId={viewerId}
-                  onFollowChange={(delta) => setFollowerCount((c) => c + delta)}
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-ink">{profile.display_name}</h1>
+                {isActive && (
+                  <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Active
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!isOwnProfile && viewerId && (
+                  <FollowButton
+                    curatorId={id}
+                    viewerId={viewerId}
+                    onFollowChange={(delta) => setFollowerCount((c) => c + delta)}
+                  />
+                )}
+                <ShareButton
+                  title={`${profile.display_name} on Dish Curator`}
+                  path={`/curators/${id}`}
+                  label="Share"
+                  className="flex items-center gap-1.5 rounded-md border border-black/15 px-3 py-1.5 text-xs font-medium text-ink/60 hover:bg-black/5 hover:text-ink"
                 />
-              )}
+              </div>
             </div>
             <p className="mt-1 text-sm text-ink/60">
               {profile.curator_type?.replace(/_/g, " ") ?? "Curator"}
               {profile.city ? ` · ${profile.city}` : ""}
             </p>
+            {isObsessedActive && (
+              <div className="mt-3 flex items-center gap-2 rounded-md bg-saffron/10 px-3 py-2">
+                <Flame size={14} className="shrink-0 text-saffron" />
+                <p className="text-sm font-medium text-ink">
+                  Currently obsessed with: <span className="text-ink/80">{profile.obsessed_with}</span>
+                </p>
+              </div>
+            )}
             {profile.bio && <p className="mt-3 text-sm leading-6 text-ink/70">{profile.bio}</p>}
 
             {hasSpecializations && (

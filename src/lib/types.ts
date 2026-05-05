@@ -11,6 +11,8 @@ export type Database = {
           city: string | null;
           curator_type: string | null;
           avatar_url: string | null;
+          obsessed_with: string | null;
+          obsessed_with_updated_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -21,6 +23,8 @@ export type Database = {
           city?: string | null;
           curator_type?: string | null;
           avatar_url?: string | null;
+          obsessed_with?: string | null;
+          obsessed_with_updated_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
         Relationships: [];
@@ -348,6 +352,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      dish_tries: {
+        Row: {
+          user_id: string;
+          dish_recommendation_id: string;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          dish_recommendation_id: string;
+          status: string;
+          created_at?: string;
+        };
+        Update: {
+          status?: string;
+        };
+        Relationships: [];
+      };
+      collections: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+        };
+        Relationships: [];
+      };
+      collection_items: {
+        Row: {
+          collection_id: string;
+          dish_recommendation_id: string;
+          added_at: string;
+        };
+        Insert: {
+          collection_id: string;
+          dish_recommendation_id: string;
+          added_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: {
       dish_feed: {
@@ -393,3 +447,7 @@ export type DishImageRow = Database["public"]["Tables"]["dish_images"]["Row"];
 export type FollowRow = Database["public"]["Tables"]["follows"]["Row"];
 export type DishViewCountRow = Database["public"]["Tables"]["dish_view_counts"]["Row"];
 export type RestaurantClaimRequestRow = Database["public"]["Tables"]["restaurant_claim_requests"]["Row"];
+export type DishTryRow = Database["public"]["Tables"]["dish_tries"]["Row"];
+export type CollectionRow = Database["public"]["Tables"]["collections"]["Row"];
+export type CollectionItemRow = Database["public"]["Tables"]["collection_items"]["Row"];
+export type TryStatus = "loved_it" | "okay" | "skip";

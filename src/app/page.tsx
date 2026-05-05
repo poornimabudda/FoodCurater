@@ -20,6 +20,11 @@ export default function HomePage() {
   const [selectedCuisine, setSelectedCuisine] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxSpice, setMaxSpice] = useState("");
+  const [chipSpicy, setChipSpicy] = useState(false);
+  const [chipVegan, setChipVegan] = useState(false);
+  const [chipUnder20, setChipUnder20] = useState(false);
+  const [chipRating4Plus, setChipRating4Plus] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -128,7 +133,34 @@ export default function HomePage() {
     return Array.from(set).sort();
   }, [dishes]);
 
-  const activeFilterCount = [selectedCuisine, maxPrice, maxSpice, vegetarianOnly ? "veg" : ""].filter(Boolean).length;
+  const suggestions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const dishNames = new Set<string>();
+    const matchCuisines = new Set<string>();
+    const matchTags = new Set<string>();
+    for (const d of dishes) {
+      if (d.dish_name.toLowerCase().includes(q)) dishNames.add(d.dish_name);
+      if (d.cuisine?.toLowerCase().includes(q)) matchCuisines.add(d.cuisine);
+      for (const tag of d.tags ?? []) {
+        if (tag.toLowerCase().includes(q)) matchTags.add(tag);
+      }
+    }
+    return [
+      ...Array.from(dishNames).slice(0, 3).map((v) => ({ type: "dish" as const, value: v, display: v })),
+      ...Array.from(matchCuisines).slice(0, 2).map((v) => ({ type: "cuisine" as const, value: v, display: v })),
+      ...Array.from(matchTags).slice(0, 3).map((v) => ({ type: "tag" as const, value: v, display: v.replace(/_/g, " ") })),
+    ].slice(0, 8);
+  }, [search, dishes]);
+
+  const activeFilterCount = [
+    selectedCuisine, maxPrice, maxSpice,
+    vegetarianOnly ? "veg" : "",
+    chipSpicy ? "spicy" : "",
+    chipVegan ? "vegan" : "",
+    chipUnder20 ? "under20" : "",
+    chipRating4Plus ? "rating4" : "",
+  ].filter(Boolean).length;
 
   const filteredDishes = useMemo(() => {
     return dishes.filter((dish) => {
@@ -143,15 +175,23 @@ export default function HomePage() {
       if (selectedCuisine && dish.cuisine !== selectedCuisine) return false;
       if (maxPrice && dish.price_estimate !== null && dish.price_estimate > Number(maxPrice)) return false;
       if (maxSpice && dish.spice_level !== null && dish.spice_level > Number(maxSpice)) return false;
+      if (chipSpicy && !((dish.spice_level !== null && dish.spice_level >= 3) || dish.tags?.includes("spicy"))) return false;
+      if (chipVegan && !dish.tags?.includes("vegan")) return false;
+      if (chipUnder20 && dish.price_estimate !== null && dish.price_estimate > 20) return false;
+      if (chipRating4Plus && (dish.rating === null || dish.rating < 4)) return false;
       return true;
     });
-  }, [dishes, search, vegetarianOnly, selectedCuisine, maxPrice, maxSpice]);
+  }, [dishes, search, vegetarianOnly, selectedCuisine, maxPrice, maxSpice, chipSpicy, chipVegan, chipUnder20, chipRating4Plus]);
 
   function clearFilters() {
     setVegetarianOnly(false);
     setSelectedCuisine("");
     setMaxPrice("");
     setMaxSpice("");
+    setChipSpicy(false);
+    setChipVegan(false);
+    setChipUnder20(false);
+    setChipRating4Plus(false);
   }
 
   const showNewCuratorNudge = userId !== null && userPostCount === 0;
@@ -179,15 +219,37 @@ export default function HomePage() {
             </div>
           </div>
           <div className="rounded-md border border-black/10 bg-white p-3 shadow-soft">
-            <label className="flex items-center gap-2 rounded-md border border-black/10 bg-rice px-3 py-2">
-              <Search size={18} className="text-ink/50" />
-              <input
-                className="w-full bg-transparent outline-none"
-                placeholder="Search dishes, cuisines, tags"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
+            <div className="relative">
+              <label className="flex items-center gap-2 rounded-md border border-black/10 bg-rice px-3 py-2">
+                <Search size={18} className="text-ink/50" />
+                <input
+                  className="w-full bg-transparent outline-none"
+                  placeholder="Search dishes, cuisines, tags"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                />
+              </label>
+              {searchFocused && suggestions.length > 0 && (
+                <div
+                  className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border border-black/10 bg-white shadow-soft"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => { setSearch(s.display); setSearchFocused(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/5 text-left"
+                    >
+                      <span className="text-xs text-ink/35 w-12 shrink-0 capitalize">{s.type}</span>
+                      <span className="text-ink/80 capitalize">{s.display}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowFilters((v) => !v)}
               className="mt-3 flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-medium hover:bg-black/5"
@@ -270,7 +332,7 @@ export default function HomePage() {
         )}
 
         {/* Feed tabs */}
-        <div className="mb-6 flex gap-1 rounded-md border border-black/10 bg-white p-1 shadow-soft w-fit">
+        <div className="mb-4 flex gap-1 rounded-md border border-black/10 bg-white p-1 shadow-soft w-fit">
           {(["latest", "trending", "following"] as FeedTab[]).map((t) => (
             <button
               key={t}
@@ -280,6 +342,29 @@ export default function HomePage() {
               }`}
             >
               {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Quick-tap filter chips */}
+        <div className="mb-6 flex flex-wrap gap-2">
+          {([
+            { key: "spicy",    label: "🌶️ Spicy",    active: chipSpicy,      toggle: () => setChipSpicy((v) => !v) },
+            { key: "vegan",    label: "🌿 Vegan",    active: chipVegan,      toggle: () => setChipVegan((v) => !v) },
+            { key: "under20",  label: "Under $20",   active: chipUnder20,    toggle: () => setChipUnder20((v) => !v) },
+            { key: "rating4",  label: "⭐ 4+",        active: chipRating4Plus, toggle: () => setChipRating4Plus((v) => !v) },
+          ] as const).map(({ key, label, active, toggle }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={toggle}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                active
+                  ? "bg-basil text-white"
+                  : "border border-black/15 bg-white text-ink/65 hover:border-basil/50 hover:text-basil"
+              }`}
+            >
+              {label}
             </button>
           ))}
         </div>

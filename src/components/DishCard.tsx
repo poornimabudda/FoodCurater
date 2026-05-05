@@ -3,8 +3,15 @@ import Link from "next/link";
 import { BadgeCheck, MapPin, Star } from "lucide-react";
 import type { DishFeedItem } from "@/lib/types";
 import { LikeSaveButtons } from "./LikeSaveButtons";
+import { ShareButton } from "./ShareButton";
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function DishCard({ dish }: { dish: DishFeedItem }) {
+  const isActiveCurator = dish.created_at
+    ? Date.now() - new Date(dish.created_at).getTime() < SEVEN_DAYS_MS
+    : false;
+
   return (
     <article className="overflow-hidden rounded-md border border-black/10 bg-white shadow-soft">
       <Link href={`/dishes/${dish.id}`} className="block">
@@ -60,20 +67,32 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
         <div className="flex items-center justify-between gap-2">
           {dish.curator_id ? (
             <Link href={`/curators/${dish.curator_id}`} className="min-w-0 text-sm text-ink/60 hover:underline">
-              <span className="truncate">{dish.curator_name ?? "a curator"}</span>
-              {dish.curator_dish_count ? (
-                <span className="ml-1 text-ink/40">· {dish.curator_dish_count} {dish.curator_dish_count === 1 ? "dish" : "dishes"}</span>
-              ) : null}
+              <span className="flex items-center gap-1.5">
+                {isActiveCurator && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" title="Active this week" />
+                )}
+                <span className="truncate">{dish.curator_name ?? "a curator"}</span>
+                {dish.curator_dish_count ? (
+                  <span className="text-ink/40">· {dish.curator_dish_count} {dish.curator_dish_count === 1 ? "dish" : "dishes"}</span>
+                ) : null}
+              </span>
             </Link>
           ) : (
             <p className="text-sm text-ink/60">{dish.curator_name ?? "a curator"}</p>
           )}
-          <LikeSaveButtons
-            dishId={dish.id}
-            initialLikes={dish.like_count ?? 0}
-            initialSaves={dish.save_count ?? 0}
-            compact
-          />
+          <div className="flex shrink-0 items-center">
+            <ShareButton
+              title={dish.dish_name}
+              path={`/dishes/${dish.id}`}
+              className="rounded p-1.5 text-ink/35 hover:bg-black/5 hover:text-ink/70"
+            />
+            <LikeSaveButtons
+              dishId={dish.id}
+              initialLikes={dish.like_count ?? 0}
+              initialSaves={dish.save_count ?? 0}
+              compact
+            />
+          </div>
         </div>
       </div>
     </article>

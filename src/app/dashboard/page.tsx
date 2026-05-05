@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart2, Bookmark, Eye, Heart, PlusCircle, TrendingUp } from "lucide-react";
+import { BarChart2, Bookmark, Eye, Heart, PlusCircle, Sparkles, TrendingUp } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { SetupNotice } from "@/components/SetupNotice";
 
@@ -16,6 +16,12 @@ type DishStat = {
   created_at: string;
 };
 
+type TasteProfile = {
+  topTags: string[];
+  topCuisine: string | null;
+  priceLabel: string | null;
+};
+
 type Stats = {
   totalLikes: number;
   totalSaves: number;
@@ -24,6 +30,7 @@ type Stats = {
   topDish: DishStat | null;
   streak: number;
   dishes: DishStat[];
+  tasteProfile: TasteProfile;
 };
 
 function computeStreak(dishes: DishStat[]): number {
@@ -94,6 +101,36 @@ export default function DashboardPage() {
         ? [...enriched].sort((a, b) => (b.like_count + b.save_count) - (a.like_count + a.save_count))[0]
         : null;
 
+      // Taste profile: derived from user's saved + liked dishes (not just their posts)
+      let tasteProfile: TasteProfile = { topTags: [], topCuisine: null, priceLabel: null };
+      const { data: savedIds } = await supabase
+        .from("saved_dishes")
+        .select("dish_recommendation_id")
+        .eq("user_id", user.id);
+      if (savedIds && savedIds.length > 0) {
+        const { data: savedFeed } = await supabase
+          .from("dish_feed")
+          .select("tags, cuisine, price_estimate")
+          .in("id", savedIds.map((r) => r.dish_recommendation_id));
+        const rows = savedFeed ?? [];
+        const tagCounts: Record<string, number> = {};
+        const cuisineCounts: Record<string, number> = {};
+        const prices: number[] = [];
+        for (const row of rows) {
+          for (const t of row.tags ?? []) tagCounts[t] = (tagCounts[t] ?? 0) + 1;
+          if (row.cuisine) cuisineCounts[row.cuisine] = (cuisineCounts[row.cuisine] ?? 0) + 1;
+          if (row.price_estimate !== null) prices.push(row.price_estimate);
+        }
+        const topTags = Object.entries(tagCounts).sort(([,a],[,b]) => b-a).slice(0,3).map(([t]) => t.replace(/_/g," "));
+        const topCuisine = Object.entries(cuisineCounts).sort(([,a],[,b]) => b-a).at(0)?.[0] ?? null;
+        let priceLabel: string | null = null;
+        if (prices.length > 0) {
+          const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+          priceLabel = avg < 15 ? "Budget-friendly" : avg < 30 ? "Mid-range" : "Splurge-worthy";
+        }
+        tasteProfile = { topTags, topCuisine, priceLabel };
+      }
+
       setStats({
         totalLikes,
         totalSaves,
@@ -102,6 +139,7 @@ export default function DashboardPage() {
         topDish,
         streak: computeStreak(enriched),
         dishes: enriched,
+        tasteProfile,
       });
       setLoading(false);
     }
@@ -150,6 +188,34 @@ export default function DashboardPage() {
             <StatCard icon={<Eye size={18} className="text-ink/50" />} label="Total views" value={stats.totalViews} />
             <StatCard icon={<TrendingUp size={18} className="text-saffron" />} label="Week streak" value={`${stats.streak}w`} />
           </div>
+
+          {/* Taste profile */}
+          {(() => {
+            const { topTags, topCuisine, priceLabel } = stats.tasteProfile;
+            const chips = [...topTags, ...(topCuisine ? [topCuisine] : []), ...(priceLabel ? [priceLabel] : [])];
+            return chips.length > 0 ? (
+              <div className="mt-6 rounded-md border border-black/10 bg-white p-5 shadow-soft">
+                <div className="flex items-center gap-2 text-sm font-medium text-ink/50 mb-3">
+                  <Sparkles size={15} />Your taste profile
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {chips.map((chip) => (
+                    <span key={chip} className="rounded-full bg-saffron/15 px-3 py-1 text-sm font-semibold text-ink capitalize">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-ink/40">Derived from your {stats.tasteProfile.topTags.length > 0 ? "saved" : ""} dishes.</p>
+              </div>
+            ) : (
+              <div className="mt-6 rounded-md border border-black/10 bg-white p-5 shadow-soft">
+                <div className="flex items-center gap-2 text-sm font-medium text-ink/50 mb-2">
+                  <Sparkles size={15} />Your taste profile
+                </div>
+                <p className="text-sm text-ink/50">Save dishes to build your taste profile.</p>
+              </div>
+            );
+          })()}
 
           {/* Top dish */}
           {stats.topDish && (

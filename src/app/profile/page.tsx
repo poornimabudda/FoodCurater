@@ -13,13 +13,15 @@ type ProfileForm = {
   city: string;
   curator_type: string;
   bio: string;
+  obsessed_with: string;
 };
 
 const emptyProfile: ProfileForm = {
   display_name: "",
   city: "",
   curator_type: "foodie",
-  bio: ""
+  bio: "",
+  obsessed_with: "",
 };
 
 export default function ProfilePage() {
@@ -51,15 +53,16 @@ export default function ProfilePage() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("display_name, city, curator_type, bio")
+        .select("display_name, city, curator_type, bio, obsessed_with")
         .eq("id", user.id)
-        .maybeSingle<Pick<ProfileRow, "display_name" | "city" | "curator_type" | "bio">>();
+        .maybeSingle<Pick<ProfileRow, "display_name" | "city" | "curator_type" | "bio" | "obsessed_with">>();
       if (data) {
         setProfile({
           display_name: data.display_name ?? "",
           city: data.city ?? "",
           curator_type: data.curator_type ?? "foodie",
-          bio: data.bio ?? ""
+          bio: data.bio ?? "",
+          obsessed_with: data.obsessed_with ?? "",
         });
       }
       setLoading(false);
@@ -77,7 +80,9 @@ export default function ProfilePage() {
       display_name: profile.display_name,
       city: profile.city,
       curator_type: profile.curator_type,
-      bio: profile.bio
+      bio: profile.bio,
+      obsessed_with: profile.obsessed_with || null,
+      obsessed_with_updated_at: profile.obsessed_with ? new Date().toISOString() : null,
     });
 
     setMessage(error ? error.message : "Profile saved.");
@@ -120,6 +125,17 @@ export default function ProfilePage() {
           <label>
             <span className="text-sm font-semibold">Bio</span>
             <textarea className="mt-2 min-h-28 w-full rounded-md border border-black/15 px-3 py-2" value={profile.bio} onChange={(event) => setProfile({ ...profile, bio: event.target.value })} />
+          </label>
+          <label>
+            <span className="text-sm font-semibold">Currently obsessed with</span>
+            <p className="mt-0.5 text-xs text-ink/50">A dish or ingredient you&apos;re into right now — shown on your profile for 7 days.</p>
+            <input
+              className="mt-2 w-full rounded-md border border-black/15 px-3 py-2"
+              placeholder="e.g. crispy chilli oil noodles"
+              maxLength={120}
+              value={profile.obsessed_with}
+              onChange={(event) => setProfile({ ...profile, obsessed_with: event.target.value })}
+            />
           </label>
           <div className="flex flex-wrap items-center gap-3">
             <button className="inline-flex w-fit items-center gap-2 rounded-md bg-basil px-4 py-2 font-semibold text-white">

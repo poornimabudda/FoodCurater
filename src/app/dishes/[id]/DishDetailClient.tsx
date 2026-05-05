@@ -7,6 +7,7 @@ import { BadgeCheck, ChevronLeft, DollarSign, Flag, Flame, Layers, Link2, MapPin
 import { supabase } from "@/lib/supabase";
 import { LikeSaveButtons } from "@/components/LikeSaveButtons";
 import { ReportModal } from "@/components/ReportModal";
+import { ShareButton } from "@/components/ShareButton";
 import type { DishFeedItem } from "@/lib/types";
 
 type DishImage = { url: string; position: number };
@@ -277,6 +278,13 @@ export function DishDetailClient({ id }: { id: string }) {
 
           <div className="mt-6 flex items-center gap-3">
             <LikeSaveButtons dishId={dish.id} initialLikes={dish.like_count} initialSaves={dish.save_count} />
+            <ShareButton
+              title={`${dish.dish_name} at ${dish.restaurant.name}`}
+              text={dish.description ?? undefined}
+              path={`/dishes/${dish.id}`}
+              label="Share"
+              className="flex items-center gap-1.5 rounded-md border border-black/15 px-3 py-2 text-sm font-medium text-ink/60 hover:bg-black/5 hover:text-ink"
+            />
           </div>
 
           <div className="mt-8 flex items-center justify-between border-t border-black/10 pt-6">

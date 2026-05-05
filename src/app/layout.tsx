@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BarChart2, Bookmark, ChefHat, HelpCircle, Map, PlusCircle } from "lucide-react";
+import { BarChart2, Bookmark, ChefHat, Compass, HelpCircle, Map, PlusCircle } from "lucide-react";
 import { NavAuth } from "@/components/NavAuth";
 import "./globals.css";
 
@@ -26,6 +26,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <span className="flex items-center gap-1.5">
                   <Map size={16} />
                   <span className="hidden lg:inline">Map</span>
+                </span>
+              </Link>
+              <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/explore">
+                <span className="flex items-center gap-1.5">
+                  <Compass size={16} />
+                  <span className="hidden lg:inline">Explore</span>
                 </span>
               </Link>
               <Link className="rounded-md px-3 py-2 text-sm font-medium hover:bg-black/5" href="/how-it-works">
