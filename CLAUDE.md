@@ -17,8 +17,9 @@ Users called **curators** post recommendations for dishes they personally tasted
 - **Storage:** Supabase Storage — bucket name is `food_images` (public)
 - **Deploy:** Vercel
 - **Icons:** Lucide React
+- **Map:** Leaflet + react-leaflet + OpenStreetMap tiles + Nominatim geocoding
 
-**Live URL:** https://food-curator.vercel.app  
+**Live URL:** https://food-curator-codex-starter.vercel.app (canonical)  
 **Supabase project ref:** `fxkvvlawuqtmgomfcssf`
 
 ---
@@ -41,23 +42,31 @@ VERCEL_TOKEN=...
 ```
 src/
   app/
-    page.tsx                      # Home feed — search + filters + WelcomeBanner
-    layout.tsx                    # Nav: how-it-works, saved, profile, recommend
+    page.tsx                      # Home feed — tabs, search+autocomplete, filter chips, infinite scroll
+    layout.tsx                    # Nav: Map, Explore, How it works, Saved, Dashboard, NavAuth, Recommend
     how-it-works/page.tsx         # Two-tab guide for browsers and curators + FAQ
     auth/page.tsx                 # Magic link sign-in
-    profile/page.tsx              # Create/edit curator profile
-    recommendations/new/page.tsx  # Post a dish recommendation (with multi-image upload)
-    dishes/[id]/page.tsx          # Dish detail — gallery, stats, pairs, tags, curator
+    profile/page.tsx              # Create/edit curator profile (incl. obsessed_with status)
+    recommendations/new/page.tsx  # 3-step post wizard (Where → Dish → Photos & tags)
+    dishes/[id]/page.tsx          # Dish detail — gallery, stats, pairs, tags, curator, share
     restaurants/[id]/page.tsx     # All dishes at a restaurant
-    curators/[id]/page.tsx        # Curator profile — bio, expertise badges, dish grid
-    saved/page.tsx                # User's saved dishes
+    curators/[id]/page.tsx        # Curator profile — bio, active badge, obsessed_with, share, expertise badges
+    saved/page.tsx                # 3-tab page: Want to try / Tried / Lists (collections)
+    dashboard/page.tsx            # Curator analytics + taste profile card
+    explore/page.tsx              # Cuisine grid + tag grid → inline filtered feed
+    map/page.tsx                  # Map-based dish discovery (Leaflet)
   components/
-    DishCard.tsx                  # Feed card — image, rating, tags, course type
-    ImageUploader.tsx             # Multi-image upload (up to 4, compress, make-primary)
-    WelcomeBanner.tsx             # First-visit onboarding banner (localStorage gated)
+    DishCard.tsx                  # Feed card — image, rating, tags, active curator dot, share button
     LikeSaveButtons.tsx           # Like + save toggle buttons
+    FollowButton.tsx              # Follow/unfollow a curator
+    ShareButton.tsx               # Web Share API + clipboard fallback (path prop, optional label)
+    TriedItButton.tsx             # Inline tried-it status picker (loved_it / okay / skip)
+    ImageUploader.tsx             # Multi-image upload (up to 4, compress, make-primary)
+    MapView.tsx                   # Leaflet map (dynamic import, ssr:false)
+    WelcomeBanner.tsx             # First-visit onboarding banner (localStorage gated)
     ReportModal.tsx               # Content report modal
     SetupNotice.tsx               # Shown when Supabase env vars are missing
+    NavAuth.tsx                   # Auth status in header
   lib/
     supabase.ts                   # Supabase client init
     types.ts                      # TypeScript types for all DB tables + dish_feed view
@@ -70,30 +79,40 @@ supabase/
     004_security_fixes.sql        # Public SELECT on likes/saves; security_invoker on view
     005_enhancements.sql          # course_type, pairs_well_with, 9 new taste_tags, view update
     006_dish_images.sql           # dish_images table (multi-image per recommendation)
+    007_phase2.sql                # follows, dish_view_counts, restaurant_claim_requests, is_verified
+    008_fixes.sql                 # View count RLS fix + lat/lng on restaurants
+    009_obsessed_with.sql         # profiles.obsessed_with + obsessed_with_updated_at
+    010_batch_b.sql               # dish_tries, collections, collection_items
 ```
 
 ---
 
 ## Database Schema (Supabase Postgres)
 
-All tables have RLS enabled. Anon users can read everything public.
+All tables have RLS enabled. Anon users can read public data.
 
 | Table | Purpose |
 |---|---|
-| `profiles` | Curator profiles — display_name, city, curator_type, bio |
-| `restaurants` | Restaurant records — name, address, city, cuisine |
-| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url (primary), course_type, pairs_well_with |
+| `profiles` | Curator profiles — display_name, city, curator_type, bio, obsessed_with, obsessed_with_updated_at |
+| `restaurants` | Restaurant records — name, address, city, cuisine, is_verified, lat, lng |
+| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url, course_type, pairs_well_with |
 | `dish_images` | Up to 4 images per recommendation — url, position (0 = primary) |
 | `taste_tags` | 22 tags across Taste Profile / Dietary & Allergen / Context groups |
 | `dish_recommendation_tags` | Many-to-many: dish ↔ tags |
 | `dish_likes` | user_id + dish_recommendation_id (PK) |
 | `saved_dishes` | user_id + dish_recommendation_id (PK) |
 | `content_reports` | reporter_id, dish_recommendation_id, reason, status |
+| `follows` | follower_id → following_id (PK) |
+| `dish_view_counts` | dish_recommendation_id, view_count, last_viewed_at |
+| `restaurant_claim_requests` | restaurant_id, requester_id, message, status |
+| `dish_tries` | user_id + dish_recommendation_id (PK), status: loved_it/okay/skip |
+| `collections` | id, user_id, name — named dish lists |
+| `collection_items` | collection_id + dish_recommendation_id (PK) |
 
-**View: `dish_feed`** — denormalized feed. Columns include `course_type`, `pairs_well_with`, `like_count`, `save_count`, `curator_dish_count`, `tags[]`.
+**View: `dish_feed`** — denormalized feed. Columns: all from dish_recommendations + restaurant_name, restaurant_city, cuisine, curator_name, curator_type, tags[], like_count, save_count, curator_dish_count, course_type, pairs_well_with.
 
 **Storage:** `food_images` bucket (public). Path: `{recommendation_id}/{position}_{timestamp}.jpg`  
-Images are compressed client-side to max 1500px / JPEG 0.82 before upload. Min 600px required.
+Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 
 ---
 
@@ -107,70 +126,47 @@ Images are compressed client-side to max 1500px / JPEG 0.82 before upload. Min 6
 
 ---
 
-## Increment Status
+## Feature Status (as of 2026-05-05)
 
-| Increment | Status | Notes |
-|---|---|---|
-| 0 — Setup | Done | Next.js, Tailwind, Supabase wired |
-| 1 — Curator Posting MVP | Done | Auth, profile, post recommendation, home feed |
-| 2 — Dish Discovery | Done | Dish detail, restaurant detail, advanced filters |
-| 3 — Curator Trust Layer | Done | Likes, saves, reports, /curators/[id] |
-| 4 — Saved Dishes | Done | /saved page, nav link |
-| Enhancements | Done | Allergen tags, course type, pairs well with, curator badges, cuisine hint |
-| Multi-image & Onboarding | Done | ImageUploader (4 photos, compress), gallery, WelcomeBanner, /how-it-works |
-| Phase 2 — Commercial Enhancements | Done | See Phase 2 section below |
-| 5 — AI Assistant | Future | Deferred until content exists |
+| Phase | Status |
+|---|---|
+| Increments 0–4 (MVP → saved dishes) | Done |
+| Enhancements (tags, course type, pairs, badges, cuisine) | Done |
+| Multi-image + onboarding | Done |
+| Phase 2 — 10 commercial enhancements | Done |
+| Phase 3 Batch A — share, filter chips, active badge, obsessed_with | Done |
+| Phase 3 Batch B — tried diary, taste profile, explore, collections, autocomplete | Done |
+| Increment 5 — AI assistant | Deferred until real content exists |
 
 ---
 
-## Phase 2: Commercial Enhancements
+## Phase 2: Commercial Enhancements (all done)
 
-All 10 enhancements implemented to improve discoverability, retention, and mobile UX in preparation for commercial growth.
+1. SSR + OG meta tags on dish/restaurant/curator pages
+2. Feed pagination + infinite scroll (20/page, cursor-based, IntersectionObserver)
+3. Feed tabs: Latest / Trending / Following
+4. Follow system (follows table, FollowButton, follower counts)
+5. 3-step post wizard (Where → Dish details → Photos & tags)
+6. Map discovery (/map, Leaflet + OpenStreetMap + Nominatim)
+7. Dish detail polish (star rating, view counter, similar dishes section)
+8. Curator dashboard (/dashboard — likes, saves, views, top dish, streak)
+9. Restaurant claiming (claim button → restaurant_claim_requests, is_verified badge)
+10. Onboarding CTAs for new users on feed + dish detail
 
-### New Routes
+## Phase 3: UX Enhancements (all done)
 
-| Route | Purpose |
-|---|---|
-| `/dashboard` | Curator analytics — total likes, saves, views, top dish, posting streak |
-| `/map` | Map-based dish discovery (Leaflet + OpenStreetMap) |
+**Batch A:**
+- ShareButton: Web Share API + clipboard fallback, on cards / dish detail / curator profile
+- Quick-tap filter chips: Spicy / Vegan / Under $20 / ⭐ 4+ above the feed grid
+- Active curator badge: green dot on feed cards + profile header, 7-day window, client-side
+- "Currently obsessed with": freeform status on profile, displayed on curator page for 7 days
 
-### New Components
-
-| Component | Purpose |
-|---|---|
-| `src/components/FollowButton.tsx` | Follow/unfollow a curator; shows follower count |
-| `src/components/MapView.tsx` | Leaflet map with restaurant markers (dynamic import, SSR disabled) |
-| `src/components/PostWizard.tsx` | 3-step post wizard replacing the single-page form |
-
-### New/Updated Pages
-
-| Page | Changes |
-|---|---|
-| `src/app/page.tsx` | Feed tabs (Latest / Trending / Following), infinite scroll, onboarding CTA for new users |
-| `src/app/dishes/[id]/page.tsx` | SSR + OG meta tags, visual polish, star rating row, similar dishes section |
-| `src/app/restaurants/[id]/page.tsx` | SSR + OG meta tags, claim restaurant button |
-| `src/app/curators/[id]/page.tsx` | SSR + OG meta tags, FollowButton, follower count |
-| `src/app/recommendations/new/page.tsx` | Replaced with 3-step wizard (Where → Dish details → Photos & tags) |
-| `src/app/dashboard/page.tsx` | New — curator stats dashboard |
-| `src/app/map/page.tsx` | New — map discovery page |
-
-### Database Changes (migration 007)
-
-Run `supabase/migrations/007_phase2.sql` in Supabase SQL editor:
-- `follows` table — curator follow graph (follower_id → following_id)
-- `dish_view_counts` table — anonymous page view tracking per dish
-- `restaurant_claim_requests` table — restaurant claiming workflow
-- `is_verified` column on `restaurants`
-- Updated `dish_feed` view with `follower_count` on profiles (separate query)
-
-### Map Stack
-
-| Layer | Technology |
-|---|---|
-| Map tiles | OpenStreetMap via Leaflet (free, no key) |
-| React wrapper | `react-leaflet` + `leaflet` npm packages |
-| Geocoding | Nominatim API (free, no key, 1 req/s limit) |
-| SSR workaround | `dynamic(() => import("@/components/MapView"), { ssr: false })` |
+**Batch B:**
+- Tried It diary: 3-tab /saved (Want to try / Tried / Lists), TriedItButton (loved_it / okay / skip), dish_tries table
+- Collections: named lists in /saved Lists tab, add-to-list picker, collections + collection_items tables
+- Taste profile card on /dashboard: top tags + cuisine + price tier from saved dishes
+- /explore page: cuisine hero grid + tag pills → inline filtered feed, Explore nav link
+- Search autocomplete: dropdown (dish names / cuisines / tags) from loaded dishes, client-side
 
 ---
 
@@ -186,38 +182,26 @@ npx vercel deploy --prod \
   --yes
 ```
 
-After deploy, re-point the alias:
-```bash
-curl -X POST "https://api.vercel.com/v2/deployments/<deployment_id>/aliases" \
-  -H "Authorization: Bearer <VERCEL_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"alias": "food-curator.vercel.app"}'
-```
+The canonical alias `food-curator-codex-starter.vercel.app` is set automatically by the deploy script (Vercel project has it configured as a production alias).
 
 ---
 
 ## Content Moderation (Reports)
 
-User reports are stored in the `content_reports` table (fields: `reason`, `status`, `reporter_id`, `dish_recommendation_id`). There is no admin UI yet — review and act on reports directly in Supabase:
+Reports are in `content_reports` (fields: reason, status, reporter_id, dish_recommendation_id). No admin UI yet — manage directly in Supabase:
 
-1. Open Supabase dashboard → Table Editor → `content_reports`
-2. Filter by `status = 'pending'`
-3. To remove a reported dish: delete the row from `dish_recommendations` (cascades to all related tables)
-4. To dismiss a false report: update `status` to `'dismissed'`
-
-**Future work:** Build a simple `/admin` page (protected by a hardcoded admin user ID check) with a report queue and one-click dismiss/remove actions.
+1. Table Editor → `content_reports` → filter `status = 'pending'`
+2. Remove reported dish: delete from `dish_recommendations` (cascades)
+3. Dismiss false report: set `status = 'dismissed'`
 
 ---
 
-## Engineering Rules (from AGENTS.md)
+## Engineering Rules
 
-1. Focus on **dishes**, not restaurants — always preserve dish-level value prop
+1. **Dishes, not restaurants** — always preserve the dish-level value prop
 2. No paid services without explicit approval
 3. No complex recommendation algorithms until Increment 5
-4. Keep code clean and modular — no unnecessary abstractions
-5. AI features (Gemini Flash / OpenRouter) only after content validation
-6. Use Supabase free tier — zero-cost MVP
-
-## Shell Note
-
-PowerShell blocks npm/npx `.ps1` scripts due to execution policy. Always run npm/npx/vercel commands via **Bash** (Git Bash), not PowerShell terminal.
+4. Keep code clean — no unnecessary abstractions
+5. AI features only after content validation
+6. Supabase free tier — zero-cost MVP
+7. Run npm/npx/vercel commands via **Bash**, not PowerShell (execution policy)
