@@ -279,7 +279,7 @@ export default function NewRecommendationPage() {
                 value={highlight}
                 onChange={(e) => setHighlight(e.target.value)}
               />
-              <p className="mt-1 text-xs text-ink/40">e.g. "House-made XO sauce, only available at this branch"</p>
+              <p className="mt-1 text-xs text-ink/40">e.g. House-made XO sauce, only available at this branch</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-semibold">
