@@ -8,21 +8,24 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function sendMagicLink(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
 
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo") ?? "/";
     setLoading(true);
     setMessage("");
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/profile`
+        emailRedirectTo: `${window.location.origin}${returnTo}`,
       }
     });
 
+    setIsSuccess(!error);
     setMessage(error ? error.message : "Check your email for the sign-in link.");
     setLoading(false);
   }
@@ -52,7 +55,7 @@ export default function AuthPage() {
               <LogIn size={18} />
               {loading ? "Sending..." : "Send magic link"}
             </button>
-            {message ? <p className="text-sm text-ink/70">{message}</p> : null}
+            {message ? <p className={`text-sm ${isSuccess ? "text-basil" : "text-tomato"}`}>{message}</p> : null}
           </form>
         )}
       </div>

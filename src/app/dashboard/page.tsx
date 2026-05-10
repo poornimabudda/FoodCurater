@@ -33,17 +33,14 @@ type Stats = {
   tasteProfile: TasteProfile;
 };
 
+function weekIndex(date: Date): number {
+  return Math.floor(date.getTime() / (7 * 24 * 60 * 60 * 1000));
+}
+
 function computeStreak(dishes: DishStat[]): number {
   if (dishes.length === 0) return 0;
-  const weeks = new Set(
-    dishes.map((d) => {
-      const date = new Date(d.created_at);
-      const startOfYear = new Date(date.getFullYear(), 0, 1);
-      return Math.floor((date.getTime() - startOfYear.getTime()) / (7 * 86400 * 1000));
-    })
-  );
-  const now = new Date();
-  const currentWeek = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 86400 * 1000));
+  const weeks = new Set(dishes.map((d) => weekIndex(new Date(d.created_at))));
+  const currentWeek = weekIndex(new Date());
   let streak = 0;
   for (let w = currentWeek; w >= 0; w--) {
     if (weeks.has(w)) streak++;

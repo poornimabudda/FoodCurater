@@ -6,15 +6,22 @@ import { ChefHat, X } from "lucide-react";
 
 const STORAGE_KEY = "dc_welcomed";
 
+function safeGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+}
+
 export function WelcomeBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
+    if (!safeGet(STORAGE_KEY)) setVisible(true);
   }, []);
 
   function dismiss() {
-    localStorage.setItem(STORAGE_KEY, "1");
+    safeSet(STORAGE_KEY, "1");
     setVisible(false);
   }
 

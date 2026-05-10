@@ -15,16 +15,18 @@ type ActiveFilter = { kind: FilterKind; value: string } | null;
 export default function ExplorePage() {
   const [dishes, setDishes] = useState<DishFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>(null);
 
   useEffect(() => {
     async function load() {
       if (!supabase) { setLoading(false); return; }
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("dish_feed")
         .select("*")
         .order("like_count", { ascending: false })
         .limit(300);
+      if (error) { setLoadError("Could not load dishes. Please refresh."); setLoading(false); return; }
       setDishes(data ?? []);
       setLoading(false);
     }
@@ -119,6 +121,8 @@ export default function ExplorePage() {
 
           {loading ? (
             <p className="mt-8 text-ink/60">Loading...</p>
+          ) : loadError ? (
+            <p className="mt-8 rounded-md bg-tomato/10 px-4 py-3 text-sm text-tomato">{loadError}</p>
           ) : (
             <>
               {/* Cuisines */}

@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { LikeSaveButtons } from "@/components/LikeSaveButtons";
 import { ReportModal } from "@/components/ReportModal";
 import { ShareButton } from "@/components/ShareButton";
+import { computeDishScore } from "@/lib/dishScore";
 import type { DishFeedItem } from "@/lib/types";
 
 type DishImage = { url: string; position: number };
@@ -36,17 +37,24 @@ type DishDetail = {
   view_count: number;
 };
 
-function StarRow({ rating }: { rating: number }) {
+function StarRow({ score }: { score: number }) {
   return (
     <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star
-          key={n}
-          size={18}
-          className={n <= rating ? "fill-saffron text-saffron" : "fill-black/10 text-black/10"}
-        />
-      ))}
-      <span className="ml-2 text-sm font-semibold text-ink">{rating}/5</span>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const full = n <= Math.floor(score);
+        const half = !full && n === Math.ceil(score) && score % 1 !== 0;
+        return (
+          <span key={n} className="relative inline-block" style={{ width: 18, height: 18 }}>
+            <Star size={18} className="fill-black/10 text-black/10" />
+            {(full || half) && (
+              <span className="absolute inset-0 overflow-hidden" style={{ width: full ? "100%" : "50%" }}>
+                <Star size={18} className="fill-saffron text-saffron" />
+              </span>
+            )}
+          </span>
+        );
+      })}
+      <span className="ml-2 text-sm font-semibold text-ink">{score}/5</span>
     </div>
   );
 }
@@ -209,18 +217,19 @@ export function DishDetailClient({ id }: { id: string }) {
 
           {/* Star rating row */}
           {dish.rating !== null && (
-            <div className="mt-3">
-              <StarRow rating={dish.rating} />
+            <div className="mt-3 space-y-1">
+              <StarRow score={computeDishScore(dish.rating, dish.tags, dish.is_personally_tasted)} />
+              <p className="text-xs text-ink/50">Curator rating: {dish.rating} / 5</p>
             </div>
           )}
 
           <Link href={`/restaurants/${dish.restaurant_id}`} className="mt-3 block text-lg font-semibold text-basil hover:underline">
-            {dish.restaurant.name}
+            {dish.restaurant?.name ?? "Restaurant"}
           </Link>
           <p className="mt-1 flex items-center gap-1 text-sm text-ink/60">
             <MapPin size={14} />
-            {[dish.restaurant.address, dish.restaurant.city, dish.restaurant.state].filter(Boolean).join(", ") || "Location not set"}
-            {dish.restaurant.cuisine ? ` • ${dish.restaurant.cuisine}` : ""}
+            {[dish.restaurant?.address, dish.restaurant?.city, dish.restaurant?.state].filter(Boolean).join(", ") || "Location not set"}
+            {dish.restaurant?.cuisine ? ` • ${dish.restaurant.cuisine}` : ""}
           </p>
 
           {dish.description && <p className="mt-5 text-base leading-7 text-ink/80">{dish.description}</p>}
@@ -279,7 +288,7 @@ export function DishDetailClient({ id }: { id: string }) {
           <div className="mt-6 flex items-center gap-3">
             <LikeSaveButtons dishId={dish.id} initialLikes={dish.like_count} initialSaves={dish.save_count} />
             <ShareButton
-              title={`${dish.dish_name} at ${dish.restaurant.name}`}
+              title={`${dish.dish_name} at ${dish.restaurant?.name ?? "the restaurant"}`}
               text={dish.description ?? undefined}
               path={`/dishes/${dish.id}`}
               label="Share"
@@ -290,13 +299,13 @@ export function DishDetailClient({ id }: { id: string }) {
           <div className="mt-8 flex items-center justify-between border-t border-black/10 pt-6">
             <Link href={`/curators/${dish.curator_id}`} className="flex items-center gap-3 hover:opacity-80">
               <div className="grid h-10 w-10 place-items-center rounded-full bg-basil/10">
-                <span className="text-sm font-bold text-basil">{dish.curator.display_name.charAt(0).toUpperCase()}</span>
+                <span className="text-sm font-bold text-basil">{dish.curator?.display_name?.charAt(0)?.toUpperCase() ?? "?"}</span>
               </div>
               <div>
-                <p className="text-sm font-semibold text-ink">{dish.curator.display_name}</p>
+                <p className="text-sm font-semibold text-ink">{dish.curator?.display_name ?? "Curator"}</p>
                 <p className="text-xs text-ink/50">
-                  {dish.curator.curator_type?.replace(/_/g, " ") ?? "Curator"}
-                  {dish.curator.city ? ` · ${dish.curator.city}` : ""}
+                  {dish.curator?.curator_type?.replace(/_/g, " ") ?? "Curator"}
+                  {dish.curator?.city ? ` · ${dish.curator.city}` : ""}
                 </p>
               </div>
             </Link>
@@ -331,7 +340,7 @@ export function DishDetailClient({ id }: { id: string }) {
         <section className="mt-10">
           <div className="flex items-center gap-2 mb-4">
             <UtensilsCrossed size={18} className="text-basil" />
-            <h2 className="text-xl font-bold text-ink">More from {dish.restaurant.name}</h2>
+            <h2 className="text-xl font-bold text-ink">More from {dish.restaurant?.name ?? "this restaurant"}</h2>
           </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {similarDishes.map((d) => {

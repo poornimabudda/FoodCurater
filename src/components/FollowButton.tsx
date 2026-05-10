@@ -32,13 +32,15 @@ export function FollowButton({ curatorId, viewerId, onFollowChange }: Props) {
     if (!supabase || loading) return;
     setLoading(true);
     if (following) {
-      await supabase.from("follows").delete().eq("follower_id", viewerId).eq("following_id", curatorId);
       setFollowing(false);
       onFollowChange?.(-1);
+      const { error } = await supabase.from("follows").delete().eq("follower_id", viewerId).eq("following_id", curatorId);
+      if (error) { setFollowing(true); onFollowChange?.(1); }
     } else {
-      await supabase.from("follows").insert({ follower_id: viewerId, following_id: curatorId });
       setFollowing(true);
       onFollowChange?.(1);
+      const { error } = await supabase.from("follows").insert({ follower_id: viewerId, following_id: curatorId });
+      if (error) { setFollowing(false); onFollowChange?.(-1); }
     }
     setLoading(false);
   }

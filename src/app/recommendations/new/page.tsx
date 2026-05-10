@@ -202,7 +202,7 @@ export default function NewRecommendationPage() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <div className="rounded-md border border-black/10 bg-white p-6 shadow-soft">
         <p className="font-semibold text-ink">Sign in before posting a recommendation.</p>
-        <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/auth">Go to sign in</Link>
+        <Link className="mt-3 inline-flex rounded-md bg-ink px-4 py-2 font-semibold text-white" href="/auth?returnTo=/recommendations/new">Go to sign in</Link>
       </div>
     </main>
   );
@@ -269,8 +269,8 @@ export default function NewRecommendationPage() {
         {/* ── Step 1: Dish details ──────────────────────────────────────── */}
         {step === 1 && (
           <div className="grid gap-4">
-            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" value={dishName} onChange={(e) => setDishName(e.target.value)} />
-            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" maxLength={100} value={dishName} onChange={(e) => setDishName(e.target.value)} />
+            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
             <div>
               <input
                 className="w-full rounded-md border border-black/15 px-3 py-2"
@@ -300,21 +300,21 @@ export default function NewRecommendationPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-semibold">
                 Pairs well with
-                <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
+                <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" maxLength={200} value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
               </label>
               <label className="grid gap-1.5 text-sm font-semibold">
                 Price ($)
-                <input type="number" min="0" step="0.01" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
+                <input type="number" min="0" step="0.5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
               </label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-semibold">
-                Rating (1–5)
-                <input type="number" min="1" max="5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
+                Rating (0.5–5)
+                <input type="number" min="0.5" max="5" step="0.5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
               </label>
               <label className="grid gap-1.5 text-sm font-semibold">
                 Spice level (0–5)
-                <input type="number" min="0" max="5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
+                <input type="number" min="0" max="5" step="1" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
               </label>
             </div>
             <div className="flex flex-wrap gap-4">
@@ -343,10 +343,10 @@ export default function NewRecommendationPage() {
             </select>
             {!selectedRestaurantId && (
               <div className="grid gap-3 rounded-md border border-black/10 bg-rice/50 p-4">
-                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Restaurant name *" value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} />
+                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Restaurant name *" maxLength={100} value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="City" value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} />
-                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Cuisine (e.g. Sichuan)" value={newRestaurantCuisine} onChange={(e) => setNewRestaurantCuisine(e.target.value)} />
+                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="City" maxLength={100} value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} />
+                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Cuisine (e.g. Sichuan)" maxLength={80} value={newRestaurantCuisine} onChange={(e) => setNewRestaurantCuisine(e.target.value)} />
                 </div>
               </div>
             )}

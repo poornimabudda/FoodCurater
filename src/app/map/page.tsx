@@ -35,21 +35,23 @@ export default function MapPage() {
   const [selected, setSelected] = useState<RestaurantWithDishes | null>(null);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [geocodingCount, setGeocodingCount] = useState(0);
 
   useEffect(() => {
     async function load() {
       if (!supabase) { setLoading(false); return; }
 
-      const { data: restRows } = await supabase
-        .from("restaurants")
-        .select("id, name, address, city, cuisine, lat, lng")
-        .order("name");
+      const [{ data: restRows, error: restError }, { data: dishRows, error: dishError }] = await Promise.all([
+        supabase.from("restaurants").select("id, name, address, city, cuisine, lat, lng").order("name"),
+        supabase.from("dish_feed").select("id, dish_name, rating, image_url, restaurant_id").order("like_count", { ascending: false }),
+      ]);
 
-      const { data: dishRows } = await supabase
-        .from("dish_feed")
-        .select("id, dish_name, rating, image_url, restaurant_id")
-        .order("like_count", { ascending: false });
+      if (restError || dishError) {
+        setLoadError("Could not load map data. Please refresh.");
+        setLoading(false);
+        return;
+      }
 
       const dishMap: Record<string, { id: string; dish_name: string; rating: number | null; image_url: string | null }[]> = {};
       for (const dish of dishRows ?? []) {
@@ -133,10 +135,14 @@ export default function MapPage() {
         <Link href="/" className="text-sm font-medium text-ink/60 hover:text-ink">← Back to feed</Link>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         <div className="flex-1 p-3">
           {loading ? (
             <div className="h-full rounded-md bg-black/5 animate-pulse" />
+          ) : loadError ? (
+            <div className="flex h-full items-center justify-center rounded-md border border-dashed border-tomato/30 bg-tomato/5">
+              <p className="text-sm text-tomato">{loadError}</p>
+            </div>
           ) : restaurants.length === 0 ? (
             <div className="flex h-full items-center justify-center rounded-md border border-dashed border-black/20 bg-white">
               <div className="text-center">
@@ -150,7 +156,7 @@ export default function MapPage() {
           )}
         </div>
 
-        <div className="w-72 shrink-0 overflow-y-auto border-l border-black/10 bg-white">
+        <div className="w-full max-h-64 md:max-h-none md:w-72 shrink-0 overflow-y-auto border-t md:border-t-0 md:border-l border-black/10 bg-white">
           {selected ? (
             <div className="p-4">
               <button

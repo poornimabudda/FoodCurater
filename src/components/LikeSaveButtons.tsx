@@ -18,6 +18,7 @@ export function LikeSaveButtons({ dishId, initialLikes, initialSaves, compact }:
   const [likes, setLikes] = useState(initialLikes);
   const [saves, setSaves] = useState(initialSaves);
   const [busy, setBusy] = useState(false);
+  const [mutError, setMutError] = useState<string | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -40,14 +41,17 @@ export function LikeSaveButtons({ dishId, initialLikes, initialSaves, compact }:
     if (!supabase) return;
     if (!userId) { window.location.href = "/auth"; return; }
     setBusy(true);
+    setMutError(null);
     if (liked) {
-      await supabase.from("dish_likes").delete().eq("dish_recommendation_id", dishId).eq("user_id", userId);
       setLiked(false);
       setLikes((n) => Math.max(0, n - 1));
+      const { error } = await supabase.from("dish_likes").delete().eq("dish_recommendation_id", dishId).eq("user_id", userId);
+      if (error) { setLiked(true); setLikes((n) => n + 1); setMutError("Could not unlike. Try again."); }
     } else {
-      await supabase.from("dish_likes").insert({ dish_recommendation_id: dishId, user_id: userId });
       setLiked(true);
       setLikes((n) => n + 1);
+      const { error } = await supabase.from("dish_likes").insert({ dish_recommendation_id: dishId, user_id: userId });
+      if (error) { setLiked(false); setLikes((n) => Math.max(0, n - 1)); setMutError("Could not like. Try again."); }
     }
     setBusy(false);
   }
@@ -57,14 +61,17 @@ export function LikeSaveButtons({ dishId, initialLikes, initialSaves, compact }:
     if (!supabase) return;
     if (!userId) { window.location.href = "/auth"; return; }
     setBusy(true);
+    setMutError(null);
     if (saved) {
-      await supabase.from("saved_dishes").delete().eq("dish_recommendation_id", dishId).eq("user_id", userId);
       setSaved(false);
       setSaves((n) => Math.max(0, n - 1));
+      const { error } = await supabase.from("saved_dishes").delete().eq("dish_recommendation_id", dishId).eq("user_id", userId);
+      if (error) { setSaved(true); setSaves((n) => n + 1); setMutError("Could not unsave. Try again."); }
     } else {
-      await supabase.from("saved_dishes").insert({ dish_recommendation_id: dishId, user_id: userId });
       setSaved(true);
       setSaves((n) => n + 1);
+      const { error } = await supabase.from("saved_dishes").insert({ dish_recommendation_id: dishId, user_id: userId });
+      if (error) { setSaved(false); setSaves((n) => Math.max(0, n - 1)); setMutError("Could not save. Try again."); }
     }
     setBusy(false);
   }
@@ -75,7 +82,9 @@ export function LikeSaveButtons({ dishId, initialLikes, initialSaves, compact }:
   const iconSize = compact ? 13 : 15;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1">
+      {mutError && <p className="text-xs text-tomato">{mutError}</p>}
+      <div className="flex items-center gap-2">
       <button
         onClick={toggleLike}
         disabled={busy}
@@ -94,6 +103,7 @@ export function LikeSaveButtons({ dishId, initialLikes, initialSaves, compact }:
         <Bookmark size={iconSize} className={saved ? "fill-basil" : ""} />
         {saves}
       </button>
+      </div>
     </div>
   );
 }

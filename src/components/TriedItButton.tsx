@@ -24,13 +24,16 @@ export function TriedItButton({ dishId, currentStatus, onStatusChange }: TriedIt
     if (!supabase || saving) return;
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("dish_tries").upsert(
-        { user_id: user.id, dish_recommendation_id: dishId, status },
-        { onConflict: "user_id,dish_recommendation_id" }
-      );
-      onStatusChange(dishId, status);
+    if (!user) {
+      setSaving(false);
+      window.location.href = "/auth";
+      return;
     }
+    const { error } = await supabase.from("dish_tries").upsert(
+      { user_id: user.id, dish_recommendation_id: dishId, status },
+      { onConflict: "user_id,dish_recommendation_id" }
+    );
+    if (!error) onStatusChange(dishId, status);
     setSaving(false);
     setOpen(false);
   }
@@ -39,13 +42,16 @@ export function TriedItButton({ dishId, currentStatus, onStatusChange }: TriedIt
     if (!supabase || saving) return;
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from("dish_tries")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("dish_recommendation_id", dishId);
-      onStatusChange(dishId, null);
+    if (!user) {
+      setSaving(false);
+      window.location.href = "/auth";
+      return;
     }
+    const { error } = await supabase.from("dish_tries")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("dish_recommendation_id", dishId);
+    if (!error) onStatusChange(dishId, null);
     setSaving(false);
   }
 

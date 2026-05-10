@@ -4,6 +4,7 @@ import { BadgeCheck, MapPin, Star } from "lucide-react";
 import type { DishFeedItem } from "@/lib/types";
 import { LikeSaveButtons } from "./LikeSaveButtons";
 import { ShareButton } from "./ShareButton";
+import { computeDishScore } from "@/lib/dishScore";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -11,6 +12,10 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
   const isActiveCurator = dish.created_at
     ? Date.now() - new Date(dish.created_at).getTime() < SEVEN_DAYS_MS
     : false;
+
+  const dishScore = dish.rating != null
+    ? computeDishScore(dish.rating, dish.tags ?? [], dish.is_personally_tasted ?? false)
+    : null;
 
   return (
     <article className="overflow-hidden rounded-md border border-black/10 bg-white shadow-soft">
@@ -33,7 +38,7 @@ export function DishCard({ dish }: { dish: DishFeedItem }) {
             </Link>
             <span className="flex shrink-0 items-center gap-1 rounded-md bg-saffron/15 px-2 py-1 text-sm font-semibold text-ink">
               <Star size={15} className="fill-saffron text-saffron" />
-              {dish.rating ?? "-"}
+              {dishScore ?? "-"}
             </span>
           </div>
           {dish.restaurant_id ? (

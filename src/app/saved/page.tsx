@@ -18,6 +18,7 @@ export default function SavedPage() {
   const [collections, setCollections] = useState<CollectionRow[]>([]);
   const [collItemsMap, setCollItemsMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SavedTab>("want");
   const [activeCollId, setActiveCollId] = useState<string | null>(null);
@@ -47,6 +48,12 @@ export default function SavedPage() {
           .eq("user_id", user.id)
           .order("created_at", { ascending: true }),
       ]);
+
+      if (savedRes.error || triesRes.error || collRes.error) {
+        setLoadError("Could not load your saved dishes. Please refresh.");
+        setLoading(false);
+        return;
+      }
 
       const ids = savedRes.data?.map((r) => r.dish_recommendation_id) ?? [];
       const collRows = (collRes.data ?? []) as CollectionRow[];
@@ -84,15 +91,24 @@ export default function SavedPage() {
     load();
   }, []);
 
-  // Close "add to list" picker on outside click
+  // Close "add to list" picker on outside click or Escape key
   useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+    function handler(e: MouseEvent | KeyboardEvent) {
+      if (e instanceof KeyboardEvent && e.key === "Escape") {
+        setAddToListOpen(null); return;
+      }
+      if (e instanceof MouseEvent && pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
         setAddToListOpen(null);
       }
     }
-    if (addToListOpen) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (addToListOpen) {
+      document.addEventListener("mousedown", handler);
+      document.addEventListener("keydown", handler);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", handler);
+    };
   }, [addToListOpen]);
 
   function handleTriedChange(dishId: string, newStatus: TryStatus | null) {
@@ -106,26 +122,38 @@ export default function SavedPage() {
 
   async function addToCollection(collectionId: string, dishId: string) {
     if (!supabase) return;
-    await supabase.from("collection_items").upsert(
-      { collection_id: collectionId, dish_recommendation_id: dishId },
-      { onConflict: "collection_id,dish_recommendation_id" }
-    );
     setCollItemsMap((prev) => ({
       ...prev,
       [collectionId]: Array.from(new Set([...(prev[collectionId] ?? []), dishId])),
     }));
     setAddToListOpen(null);
+    const { error } = await supabase.from("collection_items").upsert(
+      { collection_id: collectionId, dish_recommendation_id: dishId },
+      { onConflict: "collection_id,dish_recommendation_id" }
+    );
+    if (error) {
+      setCollItemsMap((prev) => ({
+        ...prev,
+        [collectionId]: (prev[collectionId] ?? []).filter((id) => id !== dishId),
+      }));
+    }
   }
 
   async function removeFromCollection(collectionId: string, dishId: string) {
     if (!supabase) return;
-    await supabase.from("collection_items").delete()
-      .eq("collection_id", collectionId)
-      .eq("dish_recommendation_id", dishId);
     setCollItemsMap((prev) => ({
       ...prev,
       [collectionId]: (prev[collectionId] ?? []).filter((id) => id !== dishId),
     }));
+    const { error } = await supabase.from("collection_items").delete()
+      .eq("collection_id", collectionId)
+      .eq("dish_recommendation_id", dishId);
+    if (error) {
+      setCollItemsMap((prev) => ({
+        ...prev,
+        [collectionId]: Array.from(new Set([...(prev[collectionId] ?? []), dishId])),
+      }));
+    }
   }
 
   async function createCollection() {
@@ -146,14 +174,21 @@ export default function SavedPage() {
 
   async function deleteCollection(collId: string) {
     if (!supabase) return;
-    await supabase.from("collections").delete().eq("id", collId);
+    const prevCollections = collections;
+    const prevItemsMap = { ...collItemsMap };
     setCollections((prev) => prev.filter((c) => c.id !== collId));
     setCollItemsMap((prev) => { const n = { ...prev }; delete n[collId]; return n; });
     if (activeCollId === collId) setActiveCollId(null);
+    const { error } = await supabase.from("collections").delete().eq("id", collId);
+    if (error) {
+      setCollections(prevCollections);
+      setCollItemsMap(prevItemsMap);
+    }
   }
 
   if (!isSupabaseConfigured) return <main className="mx-auto max-w-6xl px-4 py-10"><SetupNotice /></main>;
   if (loading) return <main className="mx-auto max-w-6xl px-4 py-10"><p className="text-ink/60">Loading saved dishes...</p></main>;
+  if (loadError) return <main className="mx-auto max-w-6xl px-4 py-10"><p className="rounded-md bg-tomato/10 px-4 py-3 text-sm text-tomato">{loadError}</p></main>;
 
   if (!userId) return (
     <main className="mx-auto max-w-6xl px-4 py-10">

@@ -17,28 +17,37 @@ export function CollectionPageClient({ id }: CollectionPageClientProps) {
   const [dishes, setDishes] = useState<DishFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       if (!supabase) { setLoading(false); return; }
 
-      const { data: coll } = await supabase
+      const { data: coll, error: collError } = await supabase
         .from("collections")
         .select("id, name")
         .eq("id", id)
         .single();
 
-      if (!coll) { setNotFound(true); setLoading(false); return; }
+      if (collError || !coll) {
+        if (collError?.code === "PGRST116" || !coll) { setNotFound(true); }
+        else setLoadError("Could not load this collection. Please refresh.");
+        setLoading(false);
+        return;
+      }
       setName(coll.name);
 
-      const { data: items } = await supabase
+      const { data: items, error: itemsError } = await supabase
         .from("collection_items")
         .select("dish_recommendation_id")
         .eq("collection_id", id);
 
+      if (itemsError) { setLoadError("Could not load collection dishes. Please refresh."); setLoading(false); return; }
+
       const dishIds = (items ?? []).map((r) => r.dish_recommendation_id);
       if (dishIds.length > 0) {
-        const { data: feedRows } = await supabase.from("dish_feed").select("*").in("id", dishIds);
+        const { data: feedRows, error: feedError } = await supabase.from("dish_feed").select("*").in("id", dishIds);
+        if (feedError) { setLoadError("Could not load dishes. Please refresh."); setLoading(false); return; }
         setDishes(feedRows ?? []);
       }
       setLoading(false);
@@ -47,6 +56,12 @@ export function CollectionPageClient({ id }: CollectionPageClientProps) {
   }, [id]);
 
   if (loading) return <main className="mx-auto max-w-6xl px-4 py-10"><p className="text-ink/60">Loading...</p></main>;
+
+  if (loadError) return (
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <p className="rounded-md bg-tomato/10 px-4 py-3 text-sm text-tomato">{loadError}</p>
+    </main>
+  );
 
   if (notFound) return (
     <main className="mx-auto max-w-6xl px-4 py-10">
@@ -66,12 +81,12 @@ export function CollectionPageClient({ id }: CollectionPageClientProps) {
             <FolderOpen size={20} className="text-basil" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-ink">{name}</h1>
+            <h1 className="text-2xl font-bold text-ink">{name ?? "Collection"}</h1>
             <p className="mt-0.5 text-sm text-ink/50">{dishes.length} {dishes.length === 1 ? "dish" : "dishes"}</p>
           </div>
         </div>
         <ShareButton
-          title={`${name} – Dish Curator`}
+          title={`${name ?? "Collection"} – Dish Curator`}
           path={`/collections/${id}`}
           label="Share"
           className="flex items-center gap-1.5 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium hover:bg-black/5"
