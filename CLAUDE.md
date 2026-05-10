@@ -43,46 +43,48 @@ VERCEL_TOKEN=...
 src/
   app/
     page.tsx                      # Home feed — tabs, search+autocomplete, filter chips, infinite scroll
-    layout.tsx                    # Nav: Map, Explore, How it works, Saved, Dashboard, NavAuth, Recommend
-    how-it-works/page.tsx         # Two-tab guide for browsers and curators + FAQ
-    auth/page.tsx                 # Magic link sign-in
-    profile/page.tsx              # Create/edit curator profile (incl. obsessed_with status)
-    recommendations/new/page.tsx  # 3-step post wizard (Where → Dish → Photos & tags)
-    dishes/[id]/page.tsx          # Dish detail — gallery, stats, pairs, tags, curator, share
-    restaurants/[id]/page.tsx     # All dishes at a restaurant
-    curators/[id]/page.tsx        # Curator profile — bio, active badge, obsessed_with, share, expertise badges
-    saved/page.tsx                # 3-tab page: Want to try / Tried / Lists (collections)
-    dashboard/page.tsx            # Curator analytics + taste profile card
-    explore/page.tsx              # Cuisine grid + tag grid → inline filtered feed
-    map/page.tsx                  # Map-based dish discovery (Leaflet)
+    layout.tsx                      # Nav: Map, Explore, How it works, UserMenu (Saved/Dashboard/Profile), Recommend
+    how-it-works/page.tsx           # Two-tab guide + feature grid + FAQ (updated for Phase 4)
+    auth/page.tsx                   # Magic link sign-in
+    profile/page.tsx                # Create/edit curator profile (incl. obsessed_with status)
+    recommendations/new/page.tsx    # 3-step post wizard (Dish → Where → Photos & tags)
+    dishes/[id]/page.tsx            # Dish detail — gallery, stats, pairs, tags, curator, share
+    restaurants/[id]/page.tsx       # All dishes at a restaurant
+    curators/[id]/page.tsx          # Curator profile — bio, active badge, obsessed_with, share, expertise badges
+    saved/page.tsx                  # 3-tab page: Want to try / Tried (+ post CTA) / Lists (collections + share)
+    dashboard/page.tsx              # Curator analytics + taste profile card
+    explore/page.tsx                # Cuisine grid + tag grid → inline filtered feed
+    map/page.tsx                    # Map-based dish discovery — viewport-filtered "Dishes in this area" sidebar
+    collections/[id]/page.tsx       # Public shareable collection page (SSR + OG meta)
   components/
-    DishCard.tsx                  # Feed card — image, rating, tags, active curator dot, share button
-    LikeSaveButtons.tsx           # Like + save toggle buttons
-    FollowButton.tsx              # Follow/unfollow a curator
-    ShareButton.tsx               # Web Share API + clipboard fallback (path prop, optional label)
-    TriedItButton.tsx             # Inline tried-it status picker (loved_it / okay / skip)
-    ImageUploader.tsx             # Multi-image upload (up to 4, compress, make-primary)
-    MapView.tsx                   # Leaflet map (dynamic import, ssr:false)
-    WelcomeBanner.tsx             # First-visit onboarding banner (localStorage gated)
-    ReportModal.tsx               # Content report modal
-    SetupNotice.tsx               # Shown when Supabase env vars are missing
-    NavAuth.tsx                   # Auth status in header
+    DishCard.tsx                    # Feed card — image, rating, tags, active curator dot, share button
+    LikeSaveButtons.tsx             # Like + save toggle buttons
+    FollowButton.tsx                # Follow/unfollow a curator
+    ShareButton.tsx                 # Web Share API + clipboard fallback (path prop, optional label)
+    TriedItButton.tsx               # Inline tried-it status picker (loved_it / okay / skip)
+    ImageUploader.tsx               # Multi-image upload (up to 4, compress, make-primary)
+    MapView.tsx                     # Leaflet map (dynamic import, ssr:false) — emits onBoundsChange
+    WelcomeBanner.tsx               # First-visit onboarding banner (localStorage gated)
+    ReportModal.tsx                 # Content report modal
+    SetupNotice.tsx                 # Shown when Supabase env vars are missing
+    NavAuth.tsx                     # UserMenu dropdown (Saved / Dashboard / Profile / Sign out)
   lib/
-    supabase.ts                   # Supabase client init
-    types.ts                      # TypeScript types for all DB tables + dish_feed view
-    constants.ts                  # curatorTypes[], courseTypes[], tagGroups[], starterTags[]
+    supabase.ts                     # Supabase client init
+    types.ts                        # TypeScript types for all DB tables + dish_feed view
+    constants.ts                    # curatorTypes[], courseTypes[], tagGroups[], starterTags[]
 supabase/
   migrations/
-    001_initial_mvp.sql           # All tables, RLS, storage policies, seed taste_tags
-    002_increment2_views.sql      # Recreates dish_feed with restaurant_id + curator_id
-    003_increment3_trust.sql      # dish_feed with like_count, save_count, curator_dish_count
-    004_security_fixes.sql        # Public SELECT on likes/saves; security_invoker on view
-    005_enhancements.sql          # course_type, pairs_well_with, 9 new taste_tags, view update
-    006_dish_images.sql           # dish_images table (multi-image per recommendation)
-    007_phase2.sql                # follows, dish_view_counts, restaurant_claim_requests, is_verified
-    008_fixes.sql                 # View count RLS fix + lat/lng on restaurants
-    009_obsessed_with.sql         # profiles.obsessed_with + obsessed_with_updated_at
-    010_batch_b.sql               # dish_tries, collections, collection_items
+    001_initial_mvp.sql             # All tables, RLS, storage policies, seed taste_tags
+    002_increment2_views.sql        # Recreates dish_feed with restaurant_id + curator_id
+    003_increment3_trust.sql        # dish_feed with like_count, save_count, curator_dish_count
+    004_security_fixes.sql          # Public SELECT on likes/saves; security_invoker on view
+    005_enhancements.sql            # course_type, pairs_well_with, 9 new taste_tags, view update
+    006_dish_images.sql             # dish_images table (multi-image per recommendation)
+    007_phase2.sql                  # follows, dish_view_counts, restaurant_claim_requests, is_verified
+    008_fixes.sql                   # View count RLS fix + lat/lng on restaurants
+    009_obsessed_with.sql           # profiles.obsessed_with + obsessed_with_updated_at
+    010_batch_b.sql                 # dish_tries, collections, collection_items
+    011_phase4.sql                  # highlight + availability on dish_recommendations; view update
 ```
 
 ---
@@ -95,7 +97,7 @@ All tables have RLS enabled. Anon users can read public data.
 |---|---|
 | `profiles` | Curator profiles — display_name, city, curator_type, bio, obsessed_with, obsessed_with_updated_at |
 | `restaurants` | Restaurant records — name, address, city, cuisine, is_verified, lat, lng |
-| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url, course_type, pairs_well_with |
+| `dish_recommendations` | Core post — dish_name, description, rating, spice_level, price_estimate, is_vegetarian, is_personally_tasted, image_url, course_type, pairs_well_with, highlight, availability |
 | `dish_images` | Up to 4 images per recommendation — url, position (0 = primary) |
 | `taste_tags` | 22 tags across Taste Profile / Dietary & Allergen / Context groups |
 | `dish_recommendation_tags` | Many-to-many: dish ↔ tags |
@@ -109,7 +111,7 @@ All tables have RLS enabled. Anon users can read public data.
 | `collections` | id, user_id, name — named dish lists |
 | `collection_items` | collection_id + dish_recommendation_id (PK) |
 
-**View: `dish_feed`** — denormalized feed. Columns: all from dish_recommendations + restaurant_name, restaurant_city, cuisine, curator_name, curator_type, tags[], like_count, save_count, curator_dish_count, course_type, pairs_well_with.
+**View: `dish_feed`** — denormalized feed. Columns: all from dish_recommendations + restaurant_name, restaurant_city, cuisine, curator_name, curator_type, tags[], like_count, save_count, curator_dish_count, course_type, pairs_well_with, highlight, availability.
 
 **Storage:** `food_images` bucket (public). Path: `{recommendation_id}/{position}_{timestamp}.jpg`  
 Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
@@ -126,7 +128,7 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 
 ---
 
-## Feature Status (as of 2026-05-05)
+## Feature Status (as of 2026-05-10)
 
 | Phase | Status |
 |---|---|
@@ -136,6 +138,7 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 | Phase 2 — 10 commercial enhancements | Done |
 | Phase 3 Batch A — share, filter chips, active badge, obsessed_with | Done |
 | Phase 3 Batch B — tried diary, taste profile, explore, collections, autocomplete | Done |
+| Phase 4 — nav dropdown, For you tab, highlight/availability, wizard reorder, collections sharing, trending recency, map viewport, how-it-works | Done |
 | Increment 5 — AI assistant | Deferred until real content exists |
 
 ---
@@ -167,6 +170,19 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 - Taste profile card on /dashboard: top tags + cuisine + price tier from saved dishes
 - /explore page: cuisine hero grid + tag pills → inline filtered feed, Explore nav link
 - Search autocomplete: dropdown (dish names / cuisines / tags) from loaded dishes, client-side
+
+## Phase 4: Polish & Completion (all done — deployed 2026-05-10)
+
+- Nav consolidation: NavAuth → UserMenu dropdown (Saved / Dashboard / Profile / Sign out); removed from header
+- Shareable collections: /collections/[id] public page (SSR + OG meta) + share icon in /saved Lists tab
+- Tried tab post CTA: saffron prompt at bottom of Tried tab → /recommendations/new
+- highlight field: "What makes this dish special here?" — migration 011, wizard step 1, types
+- availability field: all_day/lunch/dinner/seasonal/weekend — migration 011, wizard step 1, types
+- Wizard reorder: Dish details (step 1) → Where (step 2) → Photos & tags (step 3)
+- Trending recency weighting: client-side trendingScore() resorts 50 fetched dishes
+- "For you" tab: 4th feed tab (signed-in only); queries by top saved cuisine + top 2 tags; falls back to latest
+- Map viewport filtering: MapView emits onBoundsChange; map page shows "Dishes in this area" filtered by bounds
+- How-it-works: fully rewritten — 5 finding steps, 5 recommending steps, feature grid, 10 FAQs
 
 ---
 
