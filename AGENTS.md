@@ -1,10 +1,14 @@
-# AGENTS.md
+# AGENTS.md — Dish Curator
+
+> AI agent instructions. Read CLAUDE.md for full project context and engineering rules.
 
 ## Project Name
 Dish-Level Food Curator App
 
 ## Product Mission
-Build a dish-level food discovery app where trusted food lovers, restaurant staff, and regular customers recommend specific dishes they have personally tasted.
+A dish-level food discovery app where trusted food lovers recommend specific dishes they personally tasted.  
+**Live:** https://food-curator-codex-starter.vercel.app  
+**Stack:** Next.js 14 · Supabase · TypeScript · Tailwind CSS · Vercel (all current — MVP is deployed and live)
 
 This is not a generic restaurant review app. The product should help users answer one question quickly:
 
@@ -22,25 +26,35 @@ This is not a generic restaurant review app. The product should help users answe
 - Customer: Someone searching for what to order.
 - Admin / Moderator: Later role for trust and content quality.
 
-## MVP Scope
-Build Increment 1 first:
-- User profile
-- Restaurant entry
-- Dish recommendation post
-- Dish image upload
-- Tags and taste notes
-- Rating 1-5
-- Personally tasted checkbox
-- Basic home feed
+## Current Implementation Status (as of 2026-05-10)
+All MVP increments + Phase 2 + Phase 3 + Phase 4 + QA fixes shipped and live. See CLAUDE.md Feature Status table for complete list.
 
-## Preferred Tech Stack
-- Frontend: Next.js + React
-- Styling: Tailwind CSS
-- Backend: Supabase free tier
-- Database: Supabase Postgres
-- Auth: Supabase Auth
-- Storage: Supabase Storage
-- AI: Gemini Flash or OpenRouter
+**Key recent additions:**
+- Dish Score: derived from rating + tags (must_try +0.3, good_value +0.2, chef_special +0.2, personally_tasted +0.1, avoid -0.5), rounded to 0.5 steps
+- Photon typeahead: free restaurant address autocomplete in wizard Step 2 (photon.komoot.io)
+- All mutations have optimistic UI with error revert
+- Auth `?returnTo` param preserved through magic-link flow
+
+## Tech Stack (current)
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS
+- Backend: Supabase free tier (Postgres + Auth + Storage)
+- Auth: Supabase magic link (email OTP)
+- Deploy: Vercel
+- Icons: Lucide React
+- Map: Leaflet + react-leaflet + OpenStreetMap
+- Restaurant autocomplete: Photon API (photon.komoot.io) — free, no API key
+- Fallback geocoding: Nominatim (rate limit 1 req/sec)
+- AI: Deferred to Increment 5
+
+## Critical Agent Rules
+1. **No paid services** without explicit user approval
+2. **Never commit** `.env.local` or secrets
+3. **Deploy via Bash** — PowerShell execution policy blocks .ps1
+4. **`dish_feed` view** must be DROP + CREATE when `dish_recommendations` gets new columns
+5. **`Map` icon clash** — lucide-react `Map` shadows global `Map` type; use `Record<string,number>` not `new Map<>()`
+6. **`npx tsc --noEmit`** must pass before every commit
+7. **New text inputs** must have `maxLength`
+8. **Auth-gated actions** must check `user` before any DB write
 
 ## Engineering Guidelines
 - Keep code clean, modular, and easy to extend.
@@ -124,3 +138,62 @@ Add AI only after content validation. Future features may include:
 
 ## Important Product Warning
 If the app becomes only "reviews + photos," it will not be differentiated. Always preserve the core value proposition: trusted, dish-level recommendations from real food curators.
+
+---
+
+## Agent Quick-Reference: Key Patterns
+
+### Optimistic Mutation Pattern (LikeSaveButtons, FollowButton, collections)
+```typescript
+// 1. Update UI state immediately
+setState(newValue);
+// 2. Await DB call
+const { error } = await supabase.from(...).insert/delete/upsert(...);
+// 3. Revert on error
+if (error) { setState(oldValue); showError("Could not save. Try again."); }
+```
+
+### Auth Check Pattern (TriedItButton)
+```typescript
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) { window.location.href = "/auth"; return; }
+```
+
+### Photon Autocomplete Response Shape
+```typescript
+// GET https://photon.komoot.io/api/?q=QUERY&limit=5&layer=poi
+{
+  features: [{
+    geometry: { coordinates: [lng, lat] },  // NOTE: [lng, lat] order
+    properties: {
+      name, housenumber, street, city, state, country, country_code
+    }
+  }]
+}
+```
+
+### PostgREST FK Disambiguation
+```typescript
+// When a table has multiple FK relations to another table:
+supabase.from("dish_recommendations").select(`
+  restaurant:restaurants!restaurant_id(id, name, city),
+  curator:profiles!curator_id(id, display_name)
+`)
+```
+
+### Dish Score Formula
+```typescript
+import { computeDishScore } from "@/lib/dishScore";
+const score = computeDishScore(dish.rating, dish.tags ?? [], dish.is_personally_tasted);
+// Returns 0.5–5.0 in 0.5 steps
+```
+
+### Migrations
+Never auto-run. List the SQL, explain the change, ask user to run in Supabase dashboard → SQL editor.
+
+### Deploy Command (Bash only)
+```bash
+cd "c:/Users/poorn/OneDrive/Documents/AI Hobby Projects/food-curator"
+VERCEL_TOKEN=$(grep VERCEL_TOKEN .env.local | cut -d= -f2)
+npx vercel deploy --prod --token "$VERCEL_TOKEN" --scope poornimabudda-3872s-projects --yes
+```

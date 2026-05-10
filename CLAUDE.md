@@ -18,6 +18,7 @@ Users called **curators** post recommendations for dishes they personally tasted
 - **Deploy:** Vercel
 - **Icons:** Lucide React
 - **Map:** Leaflet + react-leaflet + OpenStreetMap tiles + Nominatim geocoding
+- **Restaurant geocoding:** Photon API (photon.komoot.io) — free, no API key, OSM-powered typeahead in wizard Step 2
 
 **Live URL:** https://food-curator-codex-starter.vercel.app (canonical)  
 **Supabase project ref:** `fxkvvlawuqtmgomfcssf`
@@ -47,7 +48,7 @@ src/
     how-it-works/page.tsx           # Two-tab guide + feature grid + FAQ (updated for Phase 4)
     auth/page.tsx                   # Magic link sign-in
     profile/page.tsx                # Create/edit curator profile (incl. obsessed_with status)
-    recommendations/new/page.tsx    # 3-step post wizard (Dish → Where → Photos & tags)
+    recommendations/new/page.tsx    # 3-step post wizard (Dish → Where → Photos & tags) — Step 2 has Photon typeahead for exact restaurant coordinates
     dishes/[id]/page.tsx            # Dish detail — gallery, stats, pairs, tags, curator, share
     restaurants/[id]/page.tsx       # All dishes at a restaurant
     curators/[id]/page.tsx          # Curator profile — bio, active badge, obsessed_with, share, expertise badges
@@ -72,6 +73,7 @@ src/
     supabase.ts                     # Supabase client init
     types.ts                        # TypeScript types for all DB tables + dish_feed view
     constants.ts                    # curatorTypes[], courseTypes[], tagGroups[], starterTags[]
+    dishScore.ts                    # computeDishScore(rating, tags, isPersonallyTasted) — Dish Score formula
 supabase/
   migrations/
     001_initial_mvp.sql             # All tables, RLS, storage policies, seed taste_tags
@@ -139,6 +141,8 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 | Phase 3 Batch A — share, filter chips, active badge, obsessed_with | Done |
 | Phase 3 Batch B — tried diary, taste profile, explore, collections, autocomplete | Done |
 | Phase 4 — nav dropdown, For you tab, highlight/availability, wizard reorder, collections sharing, trending recency, map viewport, how-it-works | Done |
+| QA Bug Fixes — rating overhaul (Dish Score), error handling, validation, streak fix, null safety | Done |
+| Map accuracy — Photon typeahead for exact restaurant coordinates in wizard Step 2 | Done |
 | Increment 5 — AI assistant | Deferred until real content exists |
 
 ---
@@ -209,6 +213,21 @@ Reports are in `content_reports` (fields: reason, status, reporter_id, dish_reco
 1. Table Editor → `content_reports` → filter `status = 'pending'`
 2. Remove reported dish: delete from `dish_recommendations` (cascades)
 3. Dismiss false report: set `status = 'dismissed'`
+
+---
+
+## Key Technical Notes
+
+- **`Map` icon clash:** `lucide-react` exports a `Map` component — never use `new Map<>()` in `page.tsx`; use `Record<string,number>` instead.
+- **`dish_feed` view:** Must be DROP + CREATE whenever `dish_recommendations` gains new columns.
+- **Photon autocomplete:** `https://photon.komoot.io/api/?q=QUERY&limit=5&layer=poi` — free, no API key, debounced 400ms. Response: `features[].geometry.coordinates = [lng, lat]`, `features[].properties.{name, housenumber, street, city, country_code}`. Selecting a result stores `lat`/`lng` directly; manual field edits clear stored coords so geocoding fallback re-runs on submit.
+- **Restaurant `address` field:** Now captured in wizard Step 2 (new `newRestaurantAddress` state). Geocoding uses `"{address}, {city}"` when Photon coords are not available.
+- **Dish Score:** `src/lib/dishScore.ts` — `computeDishScore(rating, tags, isPersonallyTasted)`. Rating input `step=0.5`. DishCard shows Dish Score; DishDetailClient shows Dish Score (half-stars) + raw curator rating.
+- **Auth `returnTo`:** `auth/page.tsx` reads `?returnTo` query param and passes to `emailRedirectTo`. Links requiring auth should use `/auth?returnTo=/path`.
+- **Streak:** Uses absolute epoch-week index (`Math.floor(date.getTime() / (7*24*60*60*1000))`) to avoid year-boundary bugs.
+- **MapView:** Dynamic import with `ssr:false`; `onBoundsChange` callback debounced 300ms.
+- **"For you" tab:** PostgREST `.or('cuisine.eq.X,tags.ov.{tag1,tag2}')` syntax.
+- **Deploy:** Always via Bash (`npx vercel deploy --prod`), not PowerShell.
 
 ---
 

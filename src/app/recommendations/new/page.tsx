@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Send } from "lucide-react";
 import { ImageUploader, type ImagePreview } from "@/components/ImageUploader";
 import { SetupNotice } from "@/components/SetupNotice";
 import { courseTypes, tagGroups } from "@/lib/constants";
@@ -11,6 +11,19 @@ import type { RestaurantRow, TasteTagRow } from "@/lib/types";
 
 type Restaurant = Pick<RestaurantRow, "id" | "name" | "city" | "cuisine">;
 type Step = 1 | 2 | 3;
+
+type PhotonFeature = {
+  geometry: { coordinates: [number, number] }; // [lng, lat]
+  properties: {
+    name?: string;
+    housenumber?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    country_code?: string;
+  };
+};
 
 const STEP_LABELS: Record<Step, string> = {
   1: "Tell us about the dish",
@@ -48,8 +61,18 @@ export default function NewRecommendationPage() {
   // Step 2 — restaurant
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [newRestaurantName, setNewRestaurantName] = useState("");
+  const [newRestaurantAddress, setNewRestaurantAddress] = useState("");
   const [newRestaurantCity, setNewRestaurantCity] = useState("");
   const [newRestaurantCuisine, setNewRestaurantCuisine] = useState("");
+  const [newRestaurantLat, setNewRestaurantLat] = useState<number | null>(null);
+  const [newRestaurantLng, setNewRestaurantLng] = useState<number | null>(null);
+
+  // Photon autocomplete
+  const [restaurantQuery, setRestaurantQuery] = useState("");
+  const [photonResults, setPhotonResults] = useState<PhotonFeature[]>([]);
+  const [photonLoading, setPhotonLoading] = useState(false);
+  const [photonOpen, setPhotonOpen] = useState(false);
+  const photonRef = useRef<HTMLDivElement>(null);
 
   // Step 3 — photos + tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -76,6 +99,58 @@ export default function NewRecommendationPage() {
     }
     loadData();
   }, []);
+
+  // Debounced Photon search
+  useEffect(() => {
+    const q = restaurantQuery.trim();
+    if (q.length < 2) { setPhotonResults([]); setPhotonOpen(false); return; }
+    const timer = setTimeout(async () => {
+      setPhotonLoading(true);
+      try {
+        const res = await fetch(
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&layer=poi`,
+          { headers: { "Accept-Language": "en" } }
+        );
+        const data = await res.json();
+        setPhotonResults(data.features ?? []);
+        setPhotonOpen((data.features ?? []).length > 0);
+      } catch {
+        setPhotonResults([]);
+      } finally {
+        setPhotonLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [restaurantQuery]);
+
+  // Close Photon dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (photonRef.current && !photonRef.current.contains(e.target as Node)) {
+        setPhotonOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  function selectPhotonResult(feat: PhotonFeature) {
+    const p = feat.properties;
+    const [lng, lat] = feat.geometry.coordinates;
+    const street = [p.housenumber, p.street].filter(Boolean).join(" ");
+    setNewRestaurantName(p.name ?? "");
+    setNewRestaurantAddress(street);
+    setNewRestaurantCity(p.city ?? p.state ?? "");
+    setNewRestaurantLat(lat);
+    setNewRestaurantLng(lng);
+    setRestaurantQuery(`${p.name ?? ""}${p.city ? ` – ${p.city}` : ""}`);
+    setPhotonOpen(false);
+  }
+
+  function clearPhotonCoords() {
+    setNewRestaurantLat(null);
+    setNewRestaurantLng(null);
+  }
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
@@ -110,18 +185,26 @@ export default function NewRecommendationPage() {
     if (!supabase || !userId) return null;
     if (selectedRestaurantId) return selectedRestaurantId;
 
-    const geocity = newRestaurantCity || newRestaurantName;
-    const coords = geocity ? await geocodeAddress(geocity) : null;
+    // Use Photon-provided coords if available; otherwise fall back to geocoding
+    let lat = newRestaurantLat;
+    let lng = newRestaurantLng;
+    if (lat === null || lng === null) {
+      const geoQuery = [newRestaurantAddress, newRestaurantCity, newRestaurantName].filter(Boolean).join(", ");
+      const coords = geoQuery ? await geocodeAddress(geoQuery) : null;
+      lat = coords?.lat ?? null;
+      lng = coords?.lng ?? null;
+    }
 
     const { data, error } = await supabase
       .from("restaurants")
       .insert({
         name: newRestaurantName,
+        address: newRestaurantAddress || null,
         city: newRestaurantCity || null,
         cuisine: newRestaurantCuisine || null,
         created_by: userId,
-        lat: coords?.lat ?? null,
-        lng: coords?.lng ?? null,
+        lat,
+        lng,
       })
       .select("id").single<{ id: string }>();
     if (error) throw error;
@@ -232,7 +315,8 @@ export default function NewRecommendationPage() {
               setNewDishId(null);
               setDishName(""); setDescription(""); setHighlight(""); setCourseType(""); setPairsWellWith(""); setAvailability("");
               setSelectedTags([]); setUploadImages([]);
-              setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantCity(""); setNewRestaurantCuisine("");
+              setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantAddress(""); setNewRestaurantCity(""); setNewRestaurantCuisine("");
+              setNewRestaurantLat(null); setNewRestaurantLng(null); setRestaurantQuery("");
             }}
             className="rounded-md border border-black/15 px-5 py-2 text-sm font-semibold text-ink hover:bg-black/5"
           >
@@ -343,11 +427,86 @@ export default function NewRecommendationPage() {
             </select>
             {!selectedRestaurantId && (
               <div className="grid gap-3 rounded-md border border-black/10 bg-rice/50 p-4">
-                <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Restaurant name *" maxLength={100} value={newRestaurantName} onChange={(e) => setNewRestaurantName(e.target.value)} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="City" maxLength={100} value={newRestaurantCity} onChange={(e) => setNewRestaurantCity(e.target.value)} />
-                  <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Cuisine (e.g. Sichuan)" maxLength={80} value={newRestaurantCuisine} onChange={(e) => setNewRestaurantCuisine(e.target.value)} />
+                {/* Photon typeahead search */}
+                <div ref={photonRef} className="relative">
+                  <label className="grid gap-1.5 text-sm font-semibold text-ink">
+                    Search restaurant
+                    <div className="relative">
+                      <Search size={15} className="absolute left-2.5 top-2.5 text-ink/30" />
+                      <input
+                        className="w-full rounded-md border border-black/15 py-2 pl-8 pr-3 font-normal"
+                        placeholder="Type restaurant name or address…"
+                        value={restaurantQuery}
+                        onChange={(e) => setRestaurantQuery(e.target.value)}
+                        onFocus={() => photonResults.length > 0 && setPhotonOpen(true)}
+                        autoComplete="off"
+                      />
+                      {photonLoading && (
+                        <span className="absolute right-2.5 top-2 text-xs text-ink/40">searching…</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-normal text-ink/40">Select a result to auto-fill details, or fill the fields below manually.</p>
+                  </label>
+                  {photonOpen && photonResults.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-black/10 bg-white shadow-lg">
+                      {photonResults.map((feat, i) => {
+                        const p = feat.properties;
+                        const street = [p.housenumber, p.street].filter(Boolean).join(" ");
+                        const location = [street, p.city].filter(Boolean).join(", ");
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => selectPhotonResult(feat)}
+                            className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-basil/5 border-b border-black/5 last:border-0"
+                          >
+                            <span className="text-sm font-semibold text-ink">{p.name ?? "Place"}</span>
+                            <span className="text-xs text-ink/50">
+                              {location || "No address"}
+                              {p.country_code ? ` · ${p.country_code.toUpperCase()}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+
+                {/* Manual fields — pre-filled on autocomplete select, always editable */}
+                <input
+                  className="rounded-md border border-black/15 px-3 py-2"
+                  placeholder="Restaurant name *"
+                  maxLength={100}
+                  value={newRestaurantName}
+                  onChange={(e) => { setNewRestaurantName(e.target.value); clearPhotonCoords(); }}
+                />
+                <input
+                  className="rounded-md border border-black/15 px-3 py-2"
+                  placeholder="Street address (e.g. 123 Main St)"
+                  value={newRestaurantAddress}
+                  onChange={(e) => { setNewRestaurantAddress(e.target.value); clearPhotonCoords(); }}
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    className="rounded-md border border-black/15 px-3 py-2"
+                    placeholder="City"
+                    maxLength={100}
+                    value={newRestaurantCity}
+                    onChange={(e) => { setNewRestaurantCity(e.target.value); clearPhotonCoords(); }}
+                  />
+                  <input
+                    className="rounded-md border border-black/15 px-3 py-2"
+                    placeholder="Cuisine (e.g. Sichuan)"
+                    maxLength={80}
+                    value={newRestaurantCuisine}
+                    onChange={(e) => setNewRestaurantCuisine(e.target.value)}
+                  />
+                </div>
+                {newRestaurantLat !== null && (
+                  <p className="flex items-center gap-1 text-xs text-basil">
+                    ✓ Location pinpointed — exact map coordinates saved
+                  </p>
+                )}
               </div>
             )}
           </div>
