@@ -63,7 +63,7 @@ export function RestaurantStep({
       setPhotonLoading(true);
       try {
         const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&layer=poi`,
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7`,
           { headers: { "Accept-Language": "en" } }
         );
         const data = await res.json();
@@ -130,7 +130,13 @@ export function RestaurantStep({
                   className="w-full rounded-md border border-black/15 py-2 pl-8 pr-3 font-normal"
                   placeholder="Type restaurant name or address…"
                   value={restaurantQuery}
-                  onChange={(e) => setRestaurantQuery(e.target.value)}
+                  onChange={(e) => {
+                    const q = e.target.value;
+                    setRestaurantQuery(q);
+                    // Mirror to name field so Next is enabled even without Photon results
+                    setNewRestaurantName(q);
+                    clearPhotonCoords();
+                  }}
                   onFocus={() => photonResults.length > 0 && setPhotonOpen(true)}
                   autoComplete="off"
                 />

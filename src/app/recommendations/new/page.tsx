@@ -80,7 +80,8 @@ export default function NewRecommendationPage() {
 
   function step1Valid() { return dishName.trim().length > 0; }
   function step2Valid() { return !!selectedRestaurantId || newRestaurantName.trim().length > 0; }
-  function step3Valid() { return uploadImages.length > 0 && !uploadImages.some((img) => img.error); }
+  // Photos are optional — curators can post without images
+  function step3Valid() { return !uploadImages.some((img) => img.error); }
 
   async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
     try {

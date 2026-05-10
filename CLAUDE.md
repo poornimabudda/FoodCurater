@@ -20,7 +20,8 @@ Users called **curators** post recommendations for dishes they personally tasted
 - **Map:** Leaflet + react-leaflet + OpenStreetMap tiles + Nominatim geocoding
 - **Restaurant geocoding:** Photon API (photon.komoot.io) — free, no API key, OSM-powered typeahead in wizard Step 2
 
-**Live URL:** https://food-curator-codex-starter.vercel.app (canonical)  
+**Live URL:** https://food-curator.vercel.app (canonical)  
+**Legacy alias:** https://food-curator-codex-starter.vercel.app (same deployment, still works)  
 **Supabase project ref:** `fxkvvlawuqtmgomfcssf`
 
 ---
@@ -35,6 +36,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 VERCEL_TOKEN=...
 GROQ_API_KEY=...          # Server-only. Free key from console.groq.com — powers ✨ Polish writing in wizard
+RESEND_API_KEY=...        # Server-only. Free key from resend.com — powers /support contact form + AI error alerts
+SUPPORT_EMAIL=...         # Server-only. Destination address for support messages and auto-alerts (never exposed to client)
 ```
 
 ---
@@ -54,6 +57,7 @@ src/
     recommendations/new/RestaurantStep.tsx   # Step 2: restaurant picker + Photon typeahead (owns photon state)
     recommendations/new/PhotoTagsStep.tsx    # Step 3: ImageUploader + tag selection
     dishes/[id]/page.tsx            # Dish detail — gallery, stats, pairs, tags, curator, share
+    support/page.tsx                # Contact form — name/email/category/message → /api/support
     restaurants/[id]/page.tsx       # All dishes at a restaurant
     curators/[id]/page.tsx          # Curator profile — bio, active badge, obsessed_with, share, expertise badges
     saved/page.tsx                  # 3-tab page: Want to try / Tried (+ post CTA) / Lists (collections + share)
@@ -94,7 +98,10 @@ supabase/
     011_phase4.sql                  # highlight + availability on dish_recommendations; view update
     012_rating_numeric.sql          # rating column: INTEGER → NUMERIC(3,1), check updated to 0.5–5.0
   api/
-    improve-description/route.ts   # POST — calls Groq (Llama 3.1 8B) via raw fetch to polish description text; GROQ_API_KEY server-only
+    improve-description/route.ts   # POST — calls Groq (Llama 3.1 8B) via raw fetch to polish description text; GROQ_API_KEY server-only; auto-alerts SUPPORT_EMAIL on failure
+    support/route.ts               # POST — contact form handler; sends email via Resend REST API to SUPPORT_EMAIL; reply_to set to submitter's email if provided
+  lib/
+    email.ts                       # sendEmail() server-side helper — raw fetch to Resend API; no-op if RESEND_API_KEY unset
 ```
 
 ---
@@ -138,7 +145,7 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 
 ---
 
-## Feature Status (as of 2026-05-10 — Architectural fixes batch)
+## Feature Status (MVP complete — 2026-05-10)
 
 | Phase | Status |
 |---|---|
@@ -152,13 +159,16 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 | QA Bug Fixes — rating overhaul (Dish Score), error handling, validation, streak fix, null safety | Done |
 | Map accuracy — Photon typeahead for exact restaurant coordinates in wizard Step 2 | Done |
 | Architectural fixes — tsconfig, rating migration, constants, toasts, wizard refactor, race condition, query optimization | Done |
-| Increment 5 — AI assistant | Deferred until real content exists |
 | AI description improvement — ✨ Polish writing button in wizard (Groq / Llama 3.1 8B) | Done |
+| Support page — /support contact form + footer link + auto-alert on AI errors (Resend) | Done |
+| Bug fixes — dish detail curator query, Photon search, photo optional, URL alias | Done |
+| **MVP shipped** — live at https://food-curator.vercel.app | ✅ |
+| Increment 5 — AI assistant | Deferred until real content exists |
 
 ---
 
 ## Phase 2: Commercial Enhancements (all done)
-
+Add a new
 1. SSR + OG meta tags on dish/restaurant/curator pages
 2. Feed pagination + infinite scroll (20/page, cursor-based, IntersectionObserver)
 3. Feed tabs: Latest / Trending / Following

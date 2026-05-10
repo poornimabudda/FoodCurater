@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sendEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   const { description } = await req.json();
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
   if (!res.ok) {
     const body = await res.text();
     console.error("Groq error:", res.status, body);
+    void notifyError(`Groq API error ${res.status}`, body);
     return NextResponse.json({ error: "AI request failed. Try again." }, { status: 502 });
   }
 
@@ -47,8 +49,19 @@ export async function POST(req: NextRequest) {
   const improved = data.choices?.[0]?.message?.content?.trim();
 
   if (!improved) {
+    void notifyError("Empty Groq response", JSON.stringify(data));
     return NextResponse.json({ error: "Empty response from AI." }, { status: 502 });
   }
 
   return NextResponse.json({ improved });
+}
+
+async function notifyError(subject: string, detail: string) {
+  const to = process.env.SUPPORT_EMAIL;
+  if (!to) return;
+  await sendEmail({
+    to,
+    subject: `[Dish Curator] AI error: ${subject}`,
+    html: `<h3>${subject}</h3><pre style="font-size:12px">${detail.slice(0, 1000)}</pre>`,
+  });
 }

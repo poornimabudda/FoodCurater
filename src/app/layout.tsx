@@ -51,6 +51,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         {children}
+        <footer className="mt-16 border-t border-black/10 bg-rice/50">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 text-xs text-ink/40">
+            <span>© {new Date().getFullYear()} Dish Curator</span>
+            <Link href="/support" className="hover:text-ink hover:underline">Support</Link>
+          </div>
+        </footer>
       </body>
     </html>
   );

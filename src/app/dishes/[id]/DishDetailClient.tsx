@@ -96,7 +96,6 @@ export function DishDetailClient({ id }: { id: string }) {
             course_type, pairs_well_with,
             restaurant_id, curator_id,
             restaurant:restaurants!restaurant_id(id, name, city, state, cuisine, address),
-            curator:profiles!curator_id(id, display_name, curator_type, city),
             dish_recommendation_tags(taste_tags(name))
           `)
           .eq("id", id)
@@ -114,6 +113,15 @@ export function DishDetailClient({ id }: { id: string }) {
       }
       if (!dishRes.data) { setNotFound(true); setLoading(false); return; }
 
+      // Fetch curator separately — PostgREST sees multiple paths from dish_recommendations
+      // to profiles (direct FK + M2M via dish_likes, saved_dishes, content_reports)
+      // and throws an ambiguity error even with the !curator_id hint.
+      const { data: curatorData } = await supabase
+        .from("profiles")
+        .select("id, display_name, curator_type, city")
+        .eq("id", dishRes.data.curator_id)
+        .single();
+
       type TagRow = { taste_tags: { name: string } | null };
       const tags = (dishRes.data.dish_recommendation_tags as TagRow[])
         .map((row) => row.taste_tags?.name)
@@ -129,7 +137,7 @@ export function DishDetailClient({ id }: { id: string }) {
       const built: DishDetail = {
         ...dishRes.data,
         restaurant: dishRes.data.restaurant as unknown as RestaurantJoin,
-        curator: dishRes.data.curator as unknown as CuratorJoin,
+        curator: curatorData as unknown as CuratorJoin,
         tags,
         images,
         like_count: countsRes.data?.like_count ?? 0,
