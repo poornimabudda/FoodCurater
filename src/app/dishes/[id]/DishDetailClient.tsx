@@ -87,8 +87,8 @@ export function DishDetailClient({ id }: { id: string }) {
             is_personally_tasted, is_vegetarian, spice_level, image_url, created_at,
             course_type, pairs_well_with,
             restaurant_id, curator_id,
-            restaurant:restaurants(id, name, city, state, cuisine, address),
-            curator:profiles(id, display_name, curator_type, city),
+            restaurant:restaurants!restaurant_id(id, name, city, state, cuisine, address),
+            curator:profiles!curator_id(id, display_name, curator_type, city),
             dish_recommendation_tags(taste_tags(name))
           `)
           .eq("id", id)
