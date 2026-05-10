@@ -1,3 +1,19 @@
+// Shared numeric constants — single source of truth
+export const PAGE_SIZE = 20;
+export const EXPLORE_LOAD_LIMIT = 100;
+export const ACTIVE_CURATOR_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const MAX_IMAGES = 4;
+export const IMAGE_MIN_PX = 600;
+export const IMAGE_MAX_PX = 1500;
+
+export const AVAILABILITY_OPTIONS = [
+  { value: "all_day",  label: "All day" },
+  { value: "lunch",    label: "Lunch only" },
+  { value: "dinner",   label: "Dinner only" },
+  { value: "seasonal", label: "Seasonal" },
+  { value: "weekend",  label: "Weekends only" },
+] as const;
+
 export const curatorTypes = [
   { value: "foodie", label: "Foodie" },
   { value: "restaurant_staff", label: "Restaurant staff" },

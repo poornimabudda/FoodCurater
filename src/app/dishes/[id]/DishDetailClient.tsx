@@ -114,17 +114,22 @@ export function DishDetailClient({ id }: { id: string }) {
       }
       if (!dishRes.data) { setNotFound(true); setLoading(false); return; }
 
-      const tags = (dishRes.data.dish_recommendation_tags as any[])
-        .map((row) => row.taste_tags?.name).filter(Boolean) as string[];
+      type TagRow = { taste_tags: { name: string } | null };
+      const tags = (dishRes.data.dish_recommendation_tags as TagRow[])
+        .map((row) => row.taste_tags?.name)
+        .filter((name): name is string => !!name);
 
       const images: DishImage[] = (imagesRes.data ?? []).length > 0
         ? (imagesRes.data as DishImage[])
         : dishRes.data.image_url ? [{ url: dishRes.data.image_url, position: 0 }] : [];
 
+      type RestaurantJoin = DishDetail["restaurant"];
+      type CuratorJoin = DishDetail["curator"];
+
       const built: DishDetail = {
         ...dishRes.data,
-        restaurant: dishRes.data.restaurant as any,
-        curator: dishRes.data.curator as any,
+        restaurant: dishRes.data.restaurant as unknown as RestaurantJoin,
+        curator: dishRes.data.curator as unknown as CuratorJoin,
         tags,
         images,
         like_count: countsRes.data?.like_count ?? 0,
@@ -134,14 +139,16 @@ export function DishDetailClient({ id }: { id: string }) {
       setDish(built);
       setActiveImageUrl(images[0]?.url ?? null);
 
-      // Increment view count (fire-and-forget)
-      supabase.from("dish_view_counts").upsert(
+      // Increment view count (fire-and-forget — log failures but don't surface to user)
+      void supabase.from("dish_view_counts").upsert(
         { dish_recommendation_id: id, view_count: (viewRes.data?.view_count ?? 0) + 1, last_viewed_at: new Date().toISOString() },
         { onConflict: "dish_recommendation_id" }
-      ).then(() => {});
+      ).then(({ error }) => {
+        if (error) console.error("view count upsert failed:", error);
+      });
 
       // Load similar dishes (same restaurant, excluding current)
-      const restId = (dishRes.data.restaurant as any)?.id;
+      const restId = built.restaurant?.id;
       if (restId) {
         const { data: similar } = await supabase
           .from("dish_feed")

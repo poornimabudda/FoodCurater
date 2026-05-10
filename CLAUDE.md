@@ -48,7 +48,10 @@ src/
     how-it-works/page.tsx           # Two-tab guide + feature grid + FAQ (updated for Phase 4)
     auth/page.tsx                   # Magic link sign-in
     profile/page.tsx                # Create/edit curator profile (incl. obsessed_with status)
-    recommendations/new/page.tsx    # 3-step post wizard (Dish → Where → Photos & tags) — Step 2 has Photon typeahead for exact restaurant coordinates
+    recommendations/new/page.tsx    # Wizard container — holds all state, submit logic, guards
+    recommendations/new/DishDetailsStep.tsx  # Step 1: dish name, description, highlight, rating, course, availability
+    recommendations/new/RestaurantStep.tsx   # Step 2: restaurant picker + Photon typeahead (owns photon state)
+    recommendations/new/PhotoTagsStep.tsx    # Step 3: ImageUploader + tag selection
     dishes/[id]/page.tsx            # Dish detail — gallery, stats, pairs, tags, curator, share
     restaurants/[id]/page.tsx       # All dishes at a restaurant
     curators/[id]/page.tsx          # Curator profile — bio, active badge, obsessed_with, share, expertise badges
@@ -72,8 +75,9 @@ src/
   lib/
     supabase.ts                     # Supabase client init
     types.ts                        # TypeScript types for all DB tables + dish_feed view
-    constants.ts                    # curatorTypes[], courseTypes[], tagGroups[], starterTags[]
+    constants.ts                    # curatorTypes[], courseTypes[], tagGroups[], starterTags[], PAGE_SIZE, AVAILABILITY_OPTIONS, etc.
     dishScore.ts                    # computeDishScore(rating, tags, isPersonallyTasted) — Dish Score formula
+    useToast.ts                     # Shared toast hook — showToast(msg, kind) auto-dismisses after 2s
 supabase/
   migrations/
     001_initial_mvp.sql             # All tables, RLS, storage policies, seed taste_tags
@@ -87,6 +91,7 @@ supabase/
     009_obsessed_with.sql           # profiles.obsessed_with + obsessed_with_updated_at
     010_batch_b.sql                 # dish_tries, collections, collection_items
     011_phase4.sql                  # highlight + availability on dish_recommendations; view update
+    012_rating_numeric.sql          # rating column: INTEGER → NUMERIC(3,1), check updated to 0.5–5.0
 ```
 
 ---
@@ -130,7 +135,7 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 
 ---
 
-## Feature Status (as of 2026-05-10)
+## Feature Status (as of 2026-05-10 — Architectural fixes batch)
 
 | Phase | Status |
 |---|---|
@@ -143,7 +148,9 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 | Phase 4 — nav dropdown, For you tab, highlight/availability, wizard reorder, collections sharing, trending recency, map viewport, how-it-works | Done |
 | QA Bug Fixes — rating overhaul (Dish Score), error handling, validation, streak fix, null safety | Done |
 | Map accuracy — Photon typeahead for exact restaurant coordinates in wizard Step 2 | Done |
+| Architectural fixes — tsconfig, rating migration, constants, toasts, wizard refactor, race condition, query optimization | Done |
 | Increment 5 — AI assistant | Deferred until real content exists |
+| AI description improvement — ✨ Improve writing button in wizard | Planned |
 
 ---
 
@@ -215,6 +222,24 @@ Reports are in `content_reports` (fields: reason, status, reporter_id, dish_reco
 3. Dismiss false report: set `status = 'dismissed'`
 
 ---
+
+## Architectural Fixes (2026-05-10)
+
+Applied as a single batch commit. All changes are backward-compatible (no migration rollback required except 012).
+
+| Fix | Details |
+|---|---|
+| **tsconfig.json** | Changed `"target": "es5"` → `"ES2017"` — required by `"moduleResolution": "bundler"` in TypeScript 5+ |
+| **Migration 012** | `rating` column changed from `INTEGER (1–5)` to `NUMERIC(3,1) (0.5–5.0)`. **Must be run in Supabase before going live.** |
+| **constants.ts** | Added `PAGE_SIZE`, `EXPLORE_LOAD_LIMIT`, `ACTIVE_CURATOR_WINDOW_MS`, `MAX_IMAGES`, `IMAGE_MIN_PX`, `IMAGE_MAX_PX`, `AVAILABILITY_OPTIONS` |
+| **useToast.ts** | New shared hook (`src/lib/useToast.ts`) — used by LikeSaveButtons, FollowButton, TriedItButton |
+| **DishDetailClient.tsx** | Replaced `as any` with typed `TagRow` / `unknown as T` casts; view-count upsert now logs errors instead of silently swallowing them |
+| **page.tsx** | Added `fetchGenRef` generation counter to prevent stale tab-switch fetch from overwriting current results; `PAGE_SIZE` now imported from constants; added explanatory eslint-disable comments |
+| **dashboard/page.tsx** | Restructured from 4 sequential queries to 2 parallel `Promise.all` rounds; saves ~2 round trips per dashboard load |
+| **explore/page.tsx** | `limit(300)` → `limit(EXPLORE_LOAD_LIMIT)` (100); avoids over-fetching the full dish corpus |
+| **LikeSaveButtons / FollowButton / TriedItButton** | All mutation components now show success / error toast feedback via `useToast` |
+| **Wizard refactor** | `recommendations/new/page.tsx` split into: `DishDetailsStep.tsx`, `RestaurantStep.tsx` (owns Photon typeahead), `PhotoTagsStep.tsx`. Container holds all state + submit logic |
+| **Image upload order** | Images are now uploaded first using a client-generated `crypto.randomUUID()` ID; the `dish_recommendations` row is only inserted after all uploads succeed, preventing orphaned DB rows |
 
 ## Key Technical Notes
 

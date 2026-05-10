@@ -62,23 +62,36 @@ export default function DashboardPage() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      const { data: feedRows } = await supabase
-        .from("dish_feed")
-        .select("id, dish_name, restaurant_name, like_count, save_count, created_at")
-        .eq("curator_id", user.id)
-        .order("created_at", { ascending: false });
+      // Phase 1: fetch curator's feed rows and saved dish IDs in parallel
+      const [feedRes, savedIdsRes] = await Promise.all([
+        supabase
+          .from("dish_feed")
+          .select("id, dish_name, restaurant_name, like_count, save_count, created_at")
+          .eq("curator_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("saved_dishes")
+          .select("dish_recommendation_id")
+          .eq("user_id", user.id),
+      ]);
 
-      const dishes = feedRows ?? [];
+      const dishes = feedRes.data ?? [];
       const dishIds = dishes.map((d) => d.id);
+      const savedIds = savedIdsRes.data ?? [];
 
-      let viewMap: Record<string, number> = {};
-      if (dishIds.length > 0) {
-        const { data: viewRows } = await supabase
-          .from("dish_view_counts")
-          .select("dish_recommendation_id, view_count")
-          .in("dish_recommendation_id", dishIds);
-        viewMap = Object.fromEntries((viewRows ?? []).map((r) => [r.dish_recommendation_id, r.view_count]));
-      }
+      // Phase 2: fetch view counts and saved-feed details in parallel
+      const [viewRes, savedFeedRes] = await Promise.all([
+        dishIds.length > 0
+          ? supabase.from("dish_view_counts").select("dish_recommendation_id, view_count").in("dish_recommendation_id", dishIds)
+          : Promise.resolve({ data: [] as { dish_recommendation_id: string; view_count: number }[] }),
+        savedIds.length > 0
+          ? supabase.from("dish_feed").select("tags, cuisine, price_estimate").in("id", savedIds.map((r) => r.dish_recommendation_id))
+          : Promise.resolve({ data: [] as { tags: string[] | null; cuisine: string | null; price_estimate: number | null }[] }),
+      ]);
+
+      const viewMap: Record<string, number> = Object.fromEntries(
+        (viewRes.data ?? []).map((r) => [r.dish_recommendation_id, r.view_count])
+      );
 
       const enriched: DishStat[] = dishes.map((d) => ({
         id: d.id,
@@ -98,22 +111,14 @@ export default function DashboardPage() {
         ? [...enriched].sort((a, b) => (b.like_count + b.save_count) - (a.like_count + a.save_count))[0]
         : null;
 
-      // Taste profile: derived from user's saved + liked dishes (not just their posts)
+      // Taste profile: derived from user's saved dishes
       let tasteProfile: TasteProfile = { topTags: [], topCuisine: null, priceLabel: null };
-      const { data: savedIds } = await supabase
-        .from("saved_dishes")
-        .select("dish_recommendation_id")
-        .eq("user_id", user.id);
-      if (savedIds && savedIds.length > 0) {
-        const { data: savedFeed } = await supabase
-          .from("dish_feed")
-          .select("tags, cuisine, price_estimate")
-          .in("id", savedIds.map((r) => r.dish_recommendation_id));
-        const rows = savedFeed ?? [];
+      if (savedIds.length > 0) {
+        const savedFeed = savedFeedRes.data ?? [];
         const tagCounts: Record<string, number> = {};
         const cuisineCounts: Record<string, number> = {};
         const prices: number[] = [];
-        for (const row of rows) {
+        for (const row of savedFeed) {
           for (const t of row.tags ?? []) tagCounts[t] = (tagCounts[t] ?? 0) + 1;
           if (row.cuisine) cuisineCounts[row.cuisine] = (cuisineCounts[row.cuisine] ?? 0) + 1;
           if (row.price_estimate !== null) prices.push(row.price_estimate);

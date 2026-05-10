@@ -1,29 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Search, Send } from "lucide-react";
-import { ImageUploader, type ImagePreview } from "@/components/ImageUploader";
+import { ChevronLeft, ChevronRight, Send } from "lucide-react";
+import type { ImagePreview } from "@/components/ImageUploader";
 import { SetupNotice } from "@/components/SetupNotice";
-import { courseTypes, tagGroups } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { RestaurantRow, TasteTagRow } from "@/lib/types";
+import type { TasteTagRow } from "@/lib/types";
+import { DishDetailsStep, type DishDetailsState } from "./DishDetailsStep";
+import { RestaurantStep, type RestaurantState, type Restaurant } from "./RestaurantStep";
+import { PhotoTagsStep } from "./PhotoTagsStep";
 
-type Restaurant = Pick<RestaurantRow, "id" | "name" | "city" | "cuisine">;
 type Step = 1 | 2 | 3;
-
-type PhotonFeature = {
-  geometry: { coordinates: [number, number] }; // [lng, lat]
-  properties: {
-    name?: string;
-    housenumber?: string;
-    street?: string;
-    city?: string;
-    state?: string;
-    country?: string;
-    country_code?: string;
-  };
-};
 
 const STEP_LABELS: Record<Step, string> = {
   1: "Tell us about the dish",
@@ -31,21 +19,17 @@ const STEP_LABELS: Record<Step, string> = {
   3: "Photos & tags",
 };
 
-const AVAILABILITY_OPTIONS = [
-  { value: "all_day",  label: "All day" },
-  { value: "lunch",    label: "Lunch only" },
-  { value: "dinner",   label: "Dinner only" },
-  { value: "seasonal", label: "Seasonal" },
-  { value: "weekend",  label: "Weekends only" },
-];
-
 export default function NewRecommendationPage() {
   const [step, setStep] = useState<Step>(1);
   const [userId, setUserId] = useState<string | null>(null);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [message, setMessage] = useState("");
+  const [newDishId, setNewDishId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Step 1 — dish
+  // Step 1 state
   const [dishName, setDishName] = useState("");
   const [description, setDescription] = useState("");
   const [highlight, setHighlight] = useState("");
@@ -58,7 +42,7 @@ export default function NewRecommendationPage() {
   const [pairsWellWith, setPairsWellWith] = useState("");
   const [availability, setAvailability] = useState("");
 
-  // Step 2 — restaurant
+  // Step 2 state
   const [selectedRestaurantId, setSelectedRestaurantId] = useState("");
   const [newRestaurantName, setNewRestaurantName] = useState("");
   const [newRestaurantAddress, setNewRestaurantAddress] = useState("");
@@ -67,21 +51,9 @@ export default function NewRecommendationPage() {
   const [newRestaurantLat, setNewRestaurantLat] = useState<number | null>(null);
   const [newRestaurantLng, setNewRestaurantLng] = useState<number | null>(null);
 
-  // Photon autocomplete
-  const [restaurantQuery, setRestaurantQuery] = useState("");
-  const [photonResults, setPhotonResults] = useState<PhotonFeature[]>([]);
-  const [photonLoading, setPhotonLoading] = useState(false);
-  const [photonOpen, setPhotonOpen] = useState(false);
-  const photonRef = useRef<HTMLDivElement>(null);
-
-  // Step 3 — photos + tags
+  // Step 3 state
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [uploadImages, setUploadImages] = useState<ImagePreview[]>([]);
-
-  const [message, setMessage] = useState("");
-  const [newDishId, setNewDishId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -90,89 +62,30 @@ export default function NewRecommendationPage() {
       const user = userData.user;
       setUserId(user?.id ?? null);
       if (user) {
-        const { data: profileData } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
-        setHasProfile(!!profileData?.display_name);
-        const { data } = await supabase.from("restaurants").select("id, name, city, cuisine").order("name").returns<Restaurant[]>();
-        setRestaurants(data ?? []);
+        const [profileRes, restaurantRes] = await Promise.all([
+          supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+          supabase.from("restaurants").select("id, name, city, cuisine").order("name"),
+        ]);
+        setHasProfile(!!profileRes.data?.display_name);
+        setRestaurants(restaurantRes.data ?? []);
       }
       setLoading(false);
     }
     loadData();
   }, []);
 
-  // Debounced Photon search
-  useEffect(() => {
-    const q = restaurantQuery.trim();
-    if (q.length < 2) { setPhotonResults([]); setPhotonOpen(false); return; }
-    const timer = setTimeout(async () => {
-      setPhotonLoading(true);
-      try {
-        const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&layer=poi`,
-          { headers: { "Accept-Language": "en" } }
-        );
-        const data = await res.json();
-        setPhotonResults(data.features ?? []);
-        setPhotonOpen((data.features ?? []).length > 0);
-      } catch {
-        setPhotonResults([]);
-      } finally {
-        setPhotonLoading(false);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [restaurantQuery]);
-
-  // Close Photon dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (photonRef.current && !photonRef.current.contains(e.target as Node)) {
-        setPhotonOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  function selectPhotonResult(feat: PhotonFeature) {
-    const p = feat.properties;
-    const [lng, lat] = feat.geometry.coordinates;
-    const street = [p.housenumber, p.street].filter(Boolean).join(" ");
-    setNewRestaurantName(p.name ?? "");
-    setNewRestaurantAddress(street);
-    setNewRestaurantCity(p.city ?? p.state ?? "");
-    setNewRestaurantLat(lat);
-    setNewRestaurantLng(lng);
-    setRestaurantQuery(`${p.name ?? ""}${p.city ? ` – ${p.city}` : ""}`);
-    setPhotonOpen(false);
-  }
-
-  function clearPhotonCoords() {
-    setNewRestaurantLat(null);
-    setNewRestaurantLng(null);
-  }
-
   function toggleTag(tag: string) {
     setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
   }
 
-  function step1Valid() {
-    return dishName.trim().length > 0;
-  }
+  function step1Valid() { return dishName.trim().length > 0; }
+  function step2Valid() { return !!selectedRestaurantId || newRestaurantName.trim().length > 0; }
+  function step3Valid() { return uploadImages.length > 0 && !uploadImages.some((img) => img.error); }
 
-  function step2Valid() {
-    if (selectedRestaurantId) return true;
-    return newRestaurantName.trim().length > 0;
-  }
-
-  function step3Valid() {
-    return uploadImages.length > 0 && !uploadImages.some((img) => img.error);
-  }
-
-  async function geocodeAddress(city: string): Promise<{ lat: number; lng: number } | null> {
+  async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`,
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
         { headers: { "User-Agent": "DishCurator/1.0" } }
       );
       const data = await res.json();
@@ -181,11 +94,10 @@ export default function NewRecommendationPage() {
     return null;
   }
 
-  async function resolveRestaurant() {
+  async function resolveRestaurant(): Promise<string | null> {
     if (!supabase || !userId) return null;
     if (selectedRestaurantId) return selectedRestaurantId;
 
-    // Use Photon-provided coords if available; otherwise fall back to geocoding
     let lat = newRestaurantLat;
     let lng = newRestaurantLng;
     if (lat === null || lng === null) {
@@ -197,32 +109,10 @@ export default function NewRecommendationPage() {
 
     const { data, error } = await supabase
       .from("restaurants")
-      .insert({
-        name: newRestaurantName,
-        address: newRestaurantAddress || null,
-        city: newRestaurantCity || null,
-        cuisine: newRestaurantCuisine || null,
-        created_by: userId,
-        lat,
-        lng,
-      })
+      .insert({ name: newRestaurantName, address: newRestaurantAddress || null, city: newRestaurantCity || null, cuisine: newRestaurantCuisine || null, created_by: userId, lat, lng })
       .select("id").single<{ id: string }>();
     if (error) throw error;
     return data.id;
-  }
-
-  async function uploadAllImages(recommendationId: string) {
-    if (!supabase || uploadImages.length === 0) return [];
-    const results: { url: string; position: number }[] = [];
-    for (let i = 0; i < uploadImages.length; i++) {
-      const img = uploadImages[i];
-      const path = `${recommendationId}/${i}_${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from("food_images").upload(path, img.file, { upsert: true });
-      if (error) throw new Error(`Photo upload failed: ${error.message}`);
-      const { data } = supabase.storage.from("food_images").getPublicUrl(path);
-      results.push({ url: data.publicUrl, position: i });
-    }
-    return results;
   }
 
   async function submit() {
@@ -234,9 +124,26 @@ export default function NewRecommendationPage() {
       const restaurantId = await resolveRestaurant();
       if (!restaurantId) throw new Error("Choose or add a restaurant.");
 
-      const { data: recommendation, error: recError } = await supabase
+      // Generate ID upfront so images are uploaded before the DB row is created.
+      // If upload fails, no orphaned recommendation row exists.
+      const recommendationId = crypto.randomUUID();
+
+      // Upload images first
+      const imageResults: { url: string; position: number }[] = [];
+      for (let i = 0; i < uploadImages.length; i++) {
+        const img = uploadImages[i];
+        const path = `${recommendationId}/${i}_${Date.now()}.jpg`;
+        const { error } = await supabase.storage.from("food_images").upload(path, img.file, { upsert: true });
+        if (error) throw new Error(`Photo upload failed: ${error.message}`);
+        const { data } = supabase.storage.from("food_images").getPublicUrl(path);
+        imageResults.push({ url: data.publicUrl, position: i });
+      }
+
+      // Create recommendation row with the pre-generated ID
+      const { error: recError } = await supabase
         .from("dish_recommendations")
         .insert({
+          id: recommendationId,
           curator_id: userId,
           restaurant_id: restaurantId,
           dish_name: dishName,
@@ -250,31 +157,39 @@ export default function NewRecommendationPage() {
           pairs_well_with: pairsWellWith || null,
           highlight: highlight.trim() || null,
           availability: availability || null,
-        })
-        .select("id").single<{ id: string }>();
+        });
       if (recError) throw recError;
 
-      const imageResults = await uploadAllImages(recommendation.id);
       if (imageResults.length > 0) {
-        await supabase.from("dish_recommendations").update({ image_url: imageResults[0].url }).eq("id", recommendation.id);
+        await supabase.from("dish_recommendations").update({ image_url: imageResults[0].url }).eq("id", recommendationId);
         await supabase.from("dish_images").insert(
-          imageResults.map((r) => ({ dish_recommendation_id: recommendation.id, url: r.url, position: r.position }))
+          imageResults.map((r) => ({ dish_recommendation_id: recommendationId, url: r.url, position: r.position }))
         );
       }
 
       if (selectedTags.length > 0) {
         const { data: tags } = await supabase.from("taste_tags").select("id, name").in("name", selectedTags).returns<Pick<TasteTagRow, "id" | "name">[]>();
         await supabase.from("dish_recommendation_tags").insert(
-          (tags ?? []).map((tag) => ({ dish_recommendation_id: recommendation.id, taste_tag_id: tag.id }))
+          (tags ?? []).map((tag) => ({ dish_recommendation_id: recommendationId, taste_tag_id: tag.id }))
         );
       }
 
-      setNewDishId(recommendation.id);
+      setNewDishId(recommendationId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save recommendation.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function resetWizard() {
+    setStep(1);
+    setNewDishId(null);
+    setDishName(""); setDescription(""); setHighlight(""); setCourseType(""); setPairsWellWith(""); setAvailability("");
+    setRating(5); setSpiceLevel(0); setIsVegetarian(false); setIsPersonallyTasted(true);
+    setSelectedTags([]); setUploadImages([]);
+    setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantAddress(""); setNewRestaurantCity(""); setNewRestaurantCuisine("");
+    setNewRestaurantLat(null); setNewRestaurantLng(null);
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────
@@ -309,17 +224,7 @@ export default function NewRecommendationPage() {
           <Link href={`/dishes/${newDishId}`} className="inline-flex rounded-md bg-basil px-5 py-2 text-sm font-semibold text-white hover:opacity-90">
             View your dish →
           </Link>
-          <button
-            onClick={() => {
-              setStep(1);
-              setNewDishId(null);
-              setDishName(""); setDescription(""); setHighlight(""); setCourseType(""); setPairsWellWith(""); setAvailability("");
-              setSelectedTags([]); setUploadImages([]);
-              setSelectedRestaurantId(""); setNewRestaurantName(""); setNewRestaurantAddress(""); setNewRestaurantCity(""); setNewRestaurantCuisine("");
-              setNewRestaurantLat(null); setNewRestaurantLng(null); setRestaurantQuery("");
-            }}
-            className="rounded-md border border-black/15 px-5 py-2 text-sm font-semibold text-ink hover:bg-black/5"
-          >
+          <button onClick={resetWizard} className="rounded-md border border-black/15 px-5 py-2 text-sm font-semibold text-ink hover:bg-black/5">
             Post another
           </button>
         </div>
@@ -327,7 +232,16 @@ export default function NewRecommendationPage() {
     </main>
   );
 
-  // ── Wizard ────────────────────────────────────────────────────────────────
+  const dishState: DishDetailsState = {
+    dishName, description, highlight, rating, priceEstimate,
+    isVegetarian, spiceLevel, isPersonallyTasted, courseType, pairsWellWith, availability,
+  };
+
+  const restaurantState: RestaurantState = {
+    selectedRestaurantId, newRestaurantName, newRestaurantAddress,
+    newRestaurantCity, newRestaurantCuisine, newRestaurantLat, newRestaurantLng,
+  };
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
       {/* Progress bar */}
@@ -350,189 +264,44 @@ export default function NewRecommendationPage() {
       <div className="rounded-md border border-black/10 bg-white p-6 shadow-soft">
         <h2 className="mb-5 text-xl font-bold text-ink">{STEP_LABELS[step]}</h2>
 
-        {/* ── Step 1: Dish details ──────────────────────────────────────── */}
         {step === 1 && (
-          <div className="grid gap-4">
-            <input className="rounded-md border border-black/15 px-3 py-2" placeholder="Dish name *" maxLength={100} value={dishName} onChange={(e) => setDishName(e.target.value)} />
-            <textarea className="min-h-28 rounded-md border border-black/15 px-3 py-2" placeholder="Taste notes: texture, spice, portion, why you recommend it" maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} />
-            <div>
-              <input
-                className="w-full rounded-md border border-black/15 px-3 py-2"
-                placeholder="What makes this dish special here? (optional)"
-                maxLength={200}
-                value={highlight}
-                onChange={(e) => setHighlight(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-ink/40">e.g. House-made XO sauce, only available at this branch</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Course type
-                <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={courseType} onChange={(e) => setCourseType(e.target.value)}>
-                  <option value="">Not specified</option>
-                  {courseTypes.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Availability
-                <select className="rounded-md border border-black/15 px-3 py-2 font-normal" value={availability} onChange={(e) => setAvailability(e.target.value)}>
-                  <option value="">Not specified</option>
-                  {AVAILABILITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Pairs well with
-                <input className="rounded-md border border-black/15 px-3 py-2 font-normal" placeholder="e.g. garlic naan, mango lassi" maxLength={200} value={pairsWellWith} onChange={(e) => setPairsWellWith(e.target.value)} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Price ($)
-                <input type="number" min="0" step="0.5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} />
-              </label>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Rating (0.5–5)
-                <input type="number" min="0.5" max="5" step="0.5" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={rating} onChange={(e) => setRating(Number(e.target.value))} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                Spice level (0–5)
-                <input type="number" min="0" max="5" step="1" className="rounded-md border border-black/15 px-3 py-2 font-normal" value={spiceLevel} onChange={(e) => setSpiceLevel(Number(e.target.value))} />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isVegetarian} onChange={(e) => setIsVegetarian(e.target.checked)} />Vegetarian
-              </label>
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={isPersonallyTasted} onChange={(e) => setIsPersonallyTasted(e.target.checked)} />Personally tasted
-              </label>
-            </div>
-          </div>
+          <DishDetailsStep
+            {...dishState}
+            setDishName={setDishName}
+            setDescription={setDescription}
+            setHighlight={setHighlight}
+            setRating={setRating}
+            setPriceEstimate={setPriceEstimate}
+            setIsVegetarian={setIsVegetarian}
+            setSpiceLevel={setSpiceLevel}
+            setIsPersonallyTasted={setIsPersonallyTasted}
+            setCourseType={setCourseType}
+            setPairsWellWith={setPairsWellWith}
+            setAvailability={setAvailability}
+          />
         )}
 
-        {/* ── Step 2: Restaurant ──────────────────────────────────────────── */}
         {step === 2 && (
-          <div className="grid gap-4">
-            <select
-              className="rounded-md border border-black/15 px-3 py-2"
-              value={selectedRestaurantId}
-              onChange={(e) => setSelectedRestaurantId(e.target.value)}
-            >
-              <option value="">+ Add a new restaurant</option>
-              {restaurants.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}{r.city ? ` – ${r.city}` : ""}</option>
-              ))}
-            </select>
-            {!selectedRestaurantId && (
-              <div className="grid gap-3 rounded-md border border-black/10 bg-rice/50 p-4">
-                {/* Photon typeahead search */}
-                <div ref={photonRef} className="relative">
-                  <label className="grid gap-1.5 text-sm font-semibold text-ink">
-                    Search restaurant
-                    <div className="relative">
-                      <Search size={15} className="absolute left-2.5 top-2.5 text-ink/30" />
-                      <input
-                        className="w-full rounded-md border border-black/15 py-2 pl-8 pr-3 font-normal"
-                        placeholder="Type restaurant name or address…"
-                        value={restaurantQuery}
-                        onChange={(e) => setRestaurantQuery(e.target.value)}
-                        onFocus={() => photonResults.length > 0 && setPhotonOpen(true)}
-                        autoComplete="off"
-                      />
-                      {photonLoading && (
-                        <span className="absolute right-2.5 top-2 text-xs text-ink/40">searching…</span>
-                      )}
-                    </div>
-                    <p className="text-xs font-normal text-ink/40">Select a result to auto-fill details, or fill the fields below manually.</p>
-                  </label>
-                  {photonOpen && photonResults.length > 0 && (
-                    <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-black/10 bg-white shadow-lg">
-                      {photonResults.map((feat, i) => {
-                        const p = feat.properties;
-                        const street = [p.housenumber, p.street].filter(Boolean).join(" ");
-                        const location = [street, p.city].filter(Boolean).join(", ");
-                        return (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => selectPhotonResult(feat)}
-                            className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-basil/5 border-b border-black/5 last:border-0"
-                          >
-                            <span className="text-sm font-semibold text-ink">{p.name ?? "Place"}</span>
-                            <span className="text-xs text-ink/50">
-                              {location || "No address"}
-                              {p.country_code ? ` · ${p.country_code.toUpperCase()}` : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Manual fields — pre-filled on autocomplete select, always editable */}
-                <input
-                  className="rounded-md border border-black/15 px-3 py-2"
-                  placeholder="Restaurant name *"
-                  maxLength={100}
-                  value={newRestaurantName}
-                  onChange={(e) => { setNewRestaurantName(e.target.value); clearPhotonCoords(); }}
-                />
-                <input
-                  className="rounded-md border border-black/15 px-3 py-2"
-                  placeholder="Street address (e.g. 123 Main St)"
-                  value={newRestaurantAddress}
-                  onChange={(e) => { setNewRestaurantAddress(e.target.value); clearPhotonCoords(); }}
-                />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    className="rounded-md border border-black/15 px-3 py-2"
-                    placeholder="City"
-                    maxLength={100}
-                    value={newRestaurantCity}
-                    onChange={(e) => { setNewRestaurantCity(e.target.value); clearPhotonCoords(); }}
-                  />
-                  <input
-                    className="rounded-md border border-black/15 px-3 py-2"
-                    placeholder="Cuisine (e.g. Sichuan)"
-                    maxLength={80}
-                    value={newRestaurantCuisine}
-                    onChange={(e) => setNewRestaurantCuisine(e.target.value)}
-                  />
-                </div>
-                {newRestaurantLat !== null && (
-                  <p className="flex items-center gap-1 text-xs text-basil">
-                    ✓ Location pinpointed — exact map coordinates saved
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          <RestaurantStep
+            restaurants={restaurants}
+            {...restaurantState}
+            setSelectedRestaurantId={setSelectedRestaurantId}
+            setNewRestaurantName={setNewRestaurantName}
+            setNewRestaurantAddress={setNewRestaurantAddress}
+            setNewRestaurantCity={setNewRestaurantCity}
+            setNewRestaurantCuisine={setNewRestaurantCuisine}
+            setNewRestaurantLat={setNewRestaurantLat}
+            setNewRestaurantLng={setNewRestaurantLng}
+          />
         )}
 
-        {/* ── Step 3: Photos + tags ─────────────────────────────────────── */}
         {step === 3 && (
-          <div className="grid gap-6">
-            <ImageUploader images={uploadImages} onChange={setUploadImages} />
-            <div>
-              <p className="mb-3 text-sm font-semibold text-ink">Tags <span className="font-normal text-ink/50">(optional)</span></p>
-              {tagGroups.map((group) => (
-                <div key={group.label} className="mb-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink/40">{group.label}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {group.tags.map((tag) => (
-                      <button type="button" key={tag} onClick={() => toggleTag(tag)}
-                        className={`rounded-md px-3 py-1.5 text-sm font-semibold ${selectedTags.includes(tag) ? "bg-basil text-white" : "bg-black/5 text-ink"}`}>
-                        {tag.replace(/_/g, " ")}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <PhotoTagsStep
+            selectedTags={selectedTags}
+            toggleTag={toggleTag}
+            uploadImages={uploadImages}
+            setUploadImages={setUploadImages}
+          />
         )}
 
         {/* Navigation */}

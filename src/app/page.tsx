@@ -7,9 +7,8 @@ import { DishCard } from "@/components/DishCard";
 import { SetupNotice } from "@/components/SetupNotice";
 import { WelcomeBanner } from "@/components/WelcomeBanner";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { PAGE_SIZE } from "@/lib/constants";
 import type { DishFeedItem } from "@/lib/types";
-
-const PAGE_SIZE = 20;
 type FeedTab = "latest" | "trending" | "following" | "for_you";
 
 interface TasteProfile {
@@ -46,6 +45,8 @@ export default function HomePage() {
   const [tasteProfile, setTasteProfile] = useState<TasteProfile | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Incremented on every reset-fetch; stale fetches check this before writing state
+  const fetchGenRef = useRef(0);
 
   // Load auth state + following list + taste profile once
   useEffect(() => {
@@ -86,6 +87,10 @@ export default function HomePage() {
   const fetchPage = useCallback(async (reset: boolean) => {
     if (!supabase) { setLoading(false); return; }
 
+    // Each reset-fetch gets a new generation number; load-more keeps the current one
+    if (reset) fetchGenRef.current++;
+    const gen = fetchGenRef.current;
+
     if (reset) {
       setLoading(true);
       setCursor(null);
@@ -106,6 +111,7 @@ export default function HomePage() {
         .order("save_count", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(50);
+      if (gen !== fetchGenRef.current) { return; } // superseded by newer tab switch
       if (!error && data) {
         const sorted = [...data].sort((a, b) => trendingScore(b) - trendingScore(a));
         setDishes(sorted);
@@ -120,6 +126,7 @@ export default function HomePage() {
       if (!tasteProfile || (tasteProfile.topCuisine === null && tasteProfile.topTags.length === 0)) {
         // Fall back to latest
         const { data, error } = await query.order("created_at", { ascending: false }).limit(50);
+        if (gen !== fetchGenRef.current) { return; }
         if (!error && data) { setDishes(data); setHasMore(false); }
         setLoading(false);
         setLoadingMore(false);
@@ -133,6 +140,7 @@ export default function HomePage() {
         .order("like_count", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(50);
+      if (gen !== fetchGenRef.current) { return; }
       if (!error && data) { setDishes(data); setHasMore(false); }
       setLoading(false);
       setLoadingMore(false);
@@ -159,6 +167,7 @@ export default function HomePage() {
     query = query.limit(PAGE_SIZE);
 
     const { data, error } = await query;
+    if (gen !== fetchGenRef.current) { return; } // superseded by newer tab switch
     if (!error && data) {
       const newDishes = reset ? data : [...dishes, ...data];
       setDishes(newDishes);
@@ -168,9 +177,12 @@ export default function HomePage() {
     setLoading(false);
     setLoadingMore(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // cursor is in deps so load-more captures the right value; excluded from the
+  // effect below so a completed page-load doesn't re-trigger a full refetch
   }, [tab, followingIds, tasteProfile, cursor]);
 
-  // Re-fetch when tab changes
+  // Re-fetch when tab or user context changes — cursor deliberately excluded
+  // to avoid re-fetching the whole feed after each paginated load-more
   useEffect(() => {
     fetchPage(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps

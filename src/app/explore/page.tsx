@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Compass } from "lucide-react";
 import { DishCard } from "@/components/DishCard";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { EXPLORE_LOAD_LIMIT } from "@/lib/constants";
 import { SetupNotice } from "@/components/SetupNotice";
 import type { DishFeedItem } from "@/lib/types";
 
@@ -25,7 +26,7 @@ export default function ExplorePage() {
         .from("dish_feed")
         .select("*")
         .order("like_count", { ascending: false })
-        .limit(300);
+        .limit(EXPLORE_LOAD_LIMIT);
       if (error) { setLoadError("Could not load dishes. Please refresh."); setLoading(false); return; }
       setDishes(data ?? []);
       setLoading(false);
