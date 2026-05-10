@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { AVAILABILITY_OPTIONS, courseTypes } from "@/lib/constants";
 
 export type DishDetailsState = {
@@ -43,6 +45,40 @@ export function DishDetailsStep({
   pairsWellWith, setPairsWellWith,
   availability, setAvailability,
 }: Props) {
+  const [improving, setImproving] = useState(false);
+  const [improveError, setImproveError] = useState<string | null>(null);
+  const beforeImproveRef = useRef<string | null>(null);
+
+  async function improveDescription() {
+    if (improving || description.trim().length < 10) return;
+    setImproving(true);
+    setImproveError(null);
+    beforeImproveRef.current = description;
+    try {
+      const res = await fetch("/api/improve-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setImproveError(data.error ?? "Could not improve. Try again."); beforeImproveRef.current = null; }
+      else setDescription(data.improved);
+    } catch {
+      setImproveError("Could not reach AI. Try again.");
+      beforeImproveRef.current = null;
+    } finally {
+      setImproving(false);
+    }
+  }
+
+  function revertDescription() {
+    if (beforeImproveRef.current !== null) {
+      setDescription(beforeImproveRef.current);
+      beforeImproveRef.current = null;
+      setImproveError(null);
+    }
+  }
+
   return (
     <div className="grid gap-4">
       <input
@@ -52,13 +88,36 @@ export function DishDetailsStep({
         value={dishName}
         onChange={(e) => setDishName(e.target.value)}
       />
-      <textarea
-        className="min-h-28 rounded-md border border-black/15 px-3 py-2"
-        placeholder="Taste notes: texture, spice, portion, why you recommend it"
-        maxLength={1000}
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-      />
+      <div>
+        <textarea
+          className="min-h-28 w-full rounded-md border border-black/15 px-3 py-2"
+          placeholder="Taste notes: texture, spice, portion, why you recommend it"
+          maxLength={1000}
+          value={description}
+          onChange={(e) => { setDescription(e.target.value); beforeImproveRef.current = null; }}
+        />
+        <div className="mt-1.5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={improveDescription}
+            disabled={improving || description.trim().length < 10}
+            className="inline-flex items-center gap-1.5 rounded-md bg-saffron/10 px-3 py-1.5 text-xs font-semibold text-ink/70 hover:bg-saffron/20 disabled:opacity-40 transition-colors"
+          >
+            <Sparkles size={13} className="text-saffron" />
+            {improving ? "Polishing…" : "✨ Polish writing"}
+          </button>
+          {beforeImproveRef.current !== null && (
+            <button
+              type="button"
+              onClick={revertDescription}
+              className="text-xs text-ink/40 hover:text-ink/70 hover:underline"
+            >
+              Revert to original
+            </button>
+          )}
+          {improveError && <p className="text-xs text-tomato">{improveError}</p>}
+        </div>
+      </div>
       <div>
         <input
           className="w-full rounded-md border border-black/15 px-3 py-2"

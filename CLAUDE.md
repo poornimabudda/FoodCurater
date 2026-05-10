@@ -34,6 +34,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://fxkvvlawuqtmgomfcssf.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 VERCEL_TOKEN=...
+GROQ_API_KEY=...          # Server-only. Free key from console.groq.com — powers ✨ Polish writing in wizard
 ```
 
 ---
@@ -49,7 +50,7 @@ src/
     auth/page.tsx                   # Magic link sign-in
     profile/page.tsx                # Create/edit curator profile (incl. obsessed_with status)
     recommendations/new/page.tsx    # Wizard container — holds all state, submit logic, guards
-    recommendations/new/DishDetailsStep.tsx  # Step 1: dish name, description, highlight, rating, course, availability
+    recommendations/new/DishDetailsStep.tsx  # Step 1: dish name, description (with ✨ Polish writing button), highlight, rating, course, availability
     recommendations/new/RestaurantStep.tsx   # Step 2: restaurant picker + Photon typeahead (owns photon state)
     recommendations/new/PhotoTagsStep.tsx    # Step 3: ImageUploader + tag selection
     dishes/[id]/page.tsx            # Dish detail — gallery, stats, pairs, tags, curator, share
@@ -92,6 +93,8 @@ supabase/
     010_batch_b.sql                 # dish_tries, collections, collection_items
     011_phase4.sql                  # highlight + availability on dish_recommendations; view update
     012_rating_numeric.sql          # rating column: INTEGER → NUMERIC(3,1), check updated to 0.5–5.0
+  api/
+    improve-description/route.ts   # POST — calls Groq (Llama 3.1 8B) via raw fetch to polish description text; GROQ_API_KEY server-only
 ```
 
 ---
@@ -150,7 +153,7 @@ Images are compressed client-side to max 1500px / JPEG 0.82. Min 600px required.
 | Map accuracy — Photon typeahead for exact restaurant coordinates in wizard Step 2 | Done |
 | Architectural fixes — tsconfig, rating migration, constants, toasts, wizard refactor, race condition, query optimization | Done |
 | Increment 5 — AI assistant | Deferred until real content exists |
-| AI description improvement — ✨ Improve writing button in wizard | Planned |
+| AI description improvement — ✨ Polish writing button in wizard (Groq / Llama 3.1 8B) | Done |
 
 ---
 
